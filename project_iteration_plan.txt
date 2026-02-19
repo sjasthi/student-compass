@@ -1,0 +1,26 @@
+================ FP 5 =========================
+- Word, PDF, URL, Text (Encode these)
+- Make non-GUI chat to work through python code
+This proves the round tirp (pushing the docs; getting the responses)
+
+
+================ FP 6 =========================
+As an admin, how can i upload the docs in web app?
+As an admin, how can I upload a brand new document (newer version) when an older version is already in the DB?
+As an user, what kinds of questions can I ask?
+As a developer, how do you validate / measure the accuracy of your chat bot?
+
+How does your UI for the chatbot looks like during FP Final? (design)
+================ FP 7 =========================
+
+
+
+================ FP 8 =========================
+
+
+
+================ FP 9 =========================
+
+
+================ FP Final  =========================
+Stabilization, Presentations, Demonstration, Deployment
