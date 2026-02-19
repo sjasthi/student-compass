@@ -1,0 +1,10 @@
+import requests
+
+# Test basic endpoint
+response = requests.get("http://localhost:8000/")
+print(response.json())
+
+# Test document upload
+files = {'file': open('example_pdf.pdf', 'rb')}
+response = requests.post('http://localhost:8000/upload-document', files=files)
+print(response.json())
