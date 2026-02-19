@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+llama-index
+chromadb
+sentence-transformers
+pypdf
+pdfplumber
+beautifulsoup4
+unstructured
+python-dotenv
+docx2txt
