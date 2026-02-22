@@ -4,6 +4,20 @@ from llama_index.core import SimpleDirectoryReader, VectorStoreIndex, StorageCon
 from llama_index.vector_stores.chroma import ChromaVectorStore
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from chromadb import PersistentClient
+from llama_index.core import Settings
+from llama_index.llms.huggingface import HuggingFaceLLM
+
+# TODO: Future ingestion improvements
+#1. metadata extraction: help retriever understand document type (more accurate search)
+#2. document summaries: give high-level meaning to each doc (better answers for broad questions)
+#3. chunk metadata: add structure to each chunk (more trustworthy and grounded answer, reference source of info)
+#4. chunk preview: catch junk text early (cleaner ingestion, fewer bugs)
+
+Settings.llm = HuggingFaceLLM(
+    model_name="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    tokenizer_name="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    context_window=2048,
+)
 
 def run_ingestion():
     # 1. load documents from data folder
@@ -36,8 +50,8 @@ def run_ingestion():
         storage_context=storage_context,
         embed_model=embed_model
     )
-    print("After ingestion, collection has:", chroma_collection.count(), "embeddings")
 
+    print("After ingestion, collection has:", chroma_collection.count(), "embeddings")
     print("Ingestion complete! Vector store saved to /chroma")
 
 if __name__ == "__main__":

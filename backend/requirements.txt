@@ -9,3 +9,4 @@ beautifulsoup4
 unstructured
 python-dotenv
 docx2txt
+llama-index-llms-huggingface
