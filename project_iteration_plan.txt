@@ -1,3 +1,17 @@
+Success/Acceptance Criteria:
+
+Admin Functionality
+1. As an admin, I shall be able to RAG different documents (word, pdf, text, URL/HTML)
+2. As an admin, I shall be able to RAG updated versions of the same documents (old must be deleted; new must be inserted).
+3. You can throw in a textbox  (localhost/studentcompass/admin.php) - password is hardcoded to Admin@1234
+4. Admin can see what documents got RAGged and encoded.
+
+End User Functionality
+1. The user sees a text box.
+2. User asks a question. SYstem responds.
+3. Below the text box, you can also show some sample / suggested questions.
+
+
 ================ FP 5 =========================
 - Word, PDF, URL, Text (Encode these)
 - Make non-GUI chat to work through python code
