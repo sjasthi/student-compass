@@ -1,3 +1,13 @@
+# turn documents into embeddings and store them in chromaDB
+
+from llama_index.core import SimpleDirectoryReader, VectorStoreIndex, StorageContext
+from llama_index.vector_stores.chroma import ChromaVectorStore
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+from chromadb import PersistentClient
+from llama_index.core import Settings
+from llama_index.llms.google_genai import GoogleGenAI
+import os
+
 # TODO: Future ingestion improvements
 #1. metadata extraction: help retriever understand document type (more accurate search)
 #2. document summaries: give high-level meaning to each doc (better answers for broad questions)
