@@ -1,12 +1,21 @@
-fastapi
-uvicorn
-llama-index
+# Core LlamaIndex
+llama-index-core
+
+# LlamaIndex integrations
+llama-index-llms-google-genai
+llama-index-vector-stores-chroma
+llama-index-embeddings-huggingface
+
+# Google Gemini SDK
+google-generativeai
+
+# ChromaDB vector store
 chromadb
+
+# HuggingFace sentence transformers (used by HuggingFaceEmbedding)
 sentence-transformers
-pypdf
-pdfplumber
-beautifulsoup4
-unstructured
+transformers
+torch
+
+# Environment variable support
 python-dotenv
-docx2txt
-llama-index-llms-huggingface
