@@ -1,20 +1,20 @@
 # load the vector store and answer questions
 
 import sys
+import os
 from llama_index.core import VectorStoreIndex, StorageContext
 from llama_index.vector_stores.chroma import ChromaVectorStore
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from chromadb import PersistentClient
 from llama_index.core import Settings
-from llama_index.llms.huggingface import HuggingFaceLLM
+from llama_index.llms.google_genai import GoogleGenAI
 from llama_index.core.prompts import PromptTemplate
 
+# configure Vertex AI LLM using environment variables
+Settings.llm = GoogleGenAI(
+    model="gemini-2.5-flash",   # fast and cost-effective Gemini model
+    api_key=""
 
-# configure the LLM
-Settings.llm = HuggingFaceLLM(
-    model_name="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-    tokenizer_name="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-    context_window=2048,
 )
 
 # prompt template
@@ -50,7 +50,6 @@ def run_query(question: str):
         response_mode="compact",
         text_qa_template=qa_prompt,
         similarity_top_k=3,
-        #disable refinement to reduce noise
         use_async=False,
         streaming=False
     )
@@ -64,8 +63,9 @@ def run_query(question: str):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python query.py \"question here\"")
-        sys.exit(1)
+        # if no argument provided, ask for input interactively
+        question = input("Enter your question: ")
+    else:
+        question = " ".join(sys.argv[1:])
 
-    question = " ".join(sys.argv[1:])
     run_query(question)
