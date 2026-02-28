@@ -1,22 +1,14 @@
-# turn documents into embeddings and store them in chromaDB
-
-from llama_index.core import SimpleDirectoryReader, VectorStoreIndex, StorageContext
-from llama_index.vector_stores.chroma import ChromaVectorStore
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-from chromadb import PersistentClient
-from llama_index.core import Settings
-from llama_index.llms.huggingface import HuggingFaceLLM
-
 # TODO: Future ingestion improvements
 #1. metadata extraction: help retriever understand document type (more accurate search)
 #2. document summaries: give high-level meaning to each doc (better answers for broad questions)
 #3. chunk metadata: add structure to each chunk (more trustworthy and grounded answer, reference source of info)
 #4. chunk preview: catch junk text early (cleaner ingestion, fewer bugs)
 
-Settings.llm = HuggingFaceLLM(
-    model_name="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-    tokenizer_name="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-    context_window=2048,
+# configure Vertex AI LLM using environment variables
+
+Settings.llm = GoogleGenAI(
+    model="gemini-2.5-flash",
+    api_key=""
 )
 
 def run_ingestion():
