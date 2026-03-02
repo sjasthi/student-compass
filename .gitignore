@@ -1,0 +1,17 @@
+# Environment variables
+.env
+*.env
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environment
+.venv/
+
+# Chroma vector store
+backend/rag/chroma/
+
+# OS junk files
+.DS_Store
+Thumbs.db
