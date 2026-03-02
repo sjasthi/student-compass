@@ -10,3 +10,4 @@ unstructured
 python-dotenv
 docx2txt
 llama-index-llms-huggingface
+llama-index-readers-web

@@ -6,6 +6,7 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from chromadb import PersistentClient
 from llama_index.core import Settings
 from llama_index.llms.huggingface import HuggingFaceLLM
+from llama_index.readers.web import SimpleWebPageReader
 
 # TODO: Future ingestion improvements
 #1. metadata extraction: help retriever understand document type (more accurate search)
@@ -20,14 +21,23 @@ Settings.llm = HuggingFaceLLM(
 )
 
 def run_ingestion():
-    # 1. load documents from data folder
+    # 1a. load documents from data folder
     documents = SimpleDirectoryReader("data").load_data()
+
+    # 1b. load documents from URLs
+    urls = [
+        "https://www.metrostate.edu/about/mission",
+        # add more URLs here
+    ]
+    if urls:
+        url_docs = SimpleWebPageReader().load_data(urls=urls)
+        documents.extend(url_docs)
 
     # print out the type of documents it took
     # testing to see if it will take .txt, .docx, and .pdf files
     print("\nLoaded documents:")
     for doc in documents:
-        path = doc.metadata.get("file_path", "unknown")
+        path = doc.metadata.get("file_path") or doc.metadata.get("url") or "unknown"
         ext = path.split(".")[-1].lower()
         print(f"- {path}  (type: {ext})")
 

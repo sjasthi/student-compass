@@ -57,6 +57,11 @@ def run_query(question: str):
 
     # 5. ask the question
     response = query_engine.query(question)
+
+    # check for accuracy, if there is no data then print no information
+    retrieved_nodes = query_engine.retrieve(question)
+    if len(retrieved_nodes) == 0:
+        return "I don’t have information about that in my documents."
     print("\nQuestion:")
     print(question)
     print("\nAnswer:")
