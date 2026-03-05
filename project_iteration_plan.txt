@@ -27,7 +27,22 @@ As a developer, how do you validate / measure the accuracy of your chat bot?
 How does your UI for the chatbot looks like during FP Final? (design)
 ================ FP 7 =========================
 
+[1] Support for Multiple Formats - You can create temporary formatted documents
+For example, you can take a text file and convert to PDF
+PDF, Txt, HTML, PPTX, Docs
 
+[2] Collect some official metrostate documents (20 docs)
+
+[3] Prepare 50 typical questions visitors / students may have.
+
+[4] Build Web UI --> Ensure that newer versions can be uploaded (new should replace old)
+
+[5] Measure the accuracy of the responses for the 50 questions you selected.
+
+[6] Tweak the "chunk" size (and other parameters) to improve accuracy.
+I need to see a comparison table on how model parameters are influencing the accuracy of responses.
+
+ 
 
 ================ FP 8 =========================
 
