@@ -42,7 +42,7 @@ PDF, Txt, HTML, PPTX, Docs
 [6] Tweak the "chunk" size (and other parameters) to improve accuracy.
 I need to see a comparison table on how model parameters are influencing the accuracy of responses.
 
- 
+  
 
 ================ FP 8 =========================
 
