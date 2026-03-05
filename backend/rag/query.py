@@ -2,19 +2,23 @@
 
 import sys
 import os
-from llama_index.core import VectorStoreIndex, StorageContext
+
+from chromadb import PersistentClient
+from dotenv import load_dotenv
+
+from llama_index.core import VectorStoreIndex, StorageContext, Settings
 from llama_index.vector_stores.chroma import ChromaVectorStore
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-from chromadb import PersistentClient
-from llama_index.core import Settings
 from llama_index.llms.google_genai import GoogleGenAI
 from llama_index.core.prompts import PromptTemplate
+
+load_dotenv()
+
 
 # configure Vertex AI LLM using environment variables
 Settings.llm = GoogleGenAI(
     model="gemini-2.5-flash",   # fast and cost-effective Gemini model
-    api_key=""
-
+    api_key=os.getenv("GEMINI_API_KEY")
 )
 
 # prompt template
@@ -60,6 +64,26 @@ def run_query(question: str):
     print(question)
     print("\nAnswer:")
     print(response)
+    print("\nSources:")
+    for node in response.source_nodes:
+        metadata = node.node.metadata
+
+        source = (
+            metadata.get("file_path")
+            or metadata.get("url")
+            or metadata.get("source")
+            or "Unknown source"
+        )
+
+        doc_type = metadata.get("doc_type", "Unknown type")
+        summary = metadata.get("summary", None)
+
+        print(f"- Source: {source}")
+        print(f"  Type: {doc_type}")
+
+        if summary:
+            print(f"  Summary: {summary[:150]}...")  #print first 150 characters
+        print()
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

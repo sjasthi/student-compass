@@ -12,10 +12,15 @@ google-generativeai
 # ChromaDB vector store
 chromadb
 
-# HuggingFace sentence transformers (used by HuggingFaceEmbedding)
+# HuggingFace sentence transformers
 sentence-transformers
 transformers
 torch
 
 # Environment variable support
 python-dotenv
+
+# FastAPI backend
+fastapi
+uvicorn
+pydantic
