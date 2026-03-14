@@ -1,0 +1,4 @@
+GOOGLE_APPLICATION_CREDENTIALS=C:/Users/19529/OneDrive/Documents/ICS 499 Software Engineering and Capstone Project/Backend_Stream/bucket_credentials.json
+GCS_BUCKET_NAME=storage_student_compass
+
+#"C:\Users\19529\OneDrive\Documents\ICS 499 Software Engineering and Capstone Project\Backend_Stream\bucket_credentials.json"
