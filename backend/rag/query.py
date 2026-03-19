@@ -14,10 +14,12 @@ from llama_index.core.prompts import PromptTemplate
 
 load_dotenv()
 
+# NEW: global variable for evaluation
+CURRENT_TOP_K = 3
 
 # configure Vertex AI LLM using environment variables
 Settings.llm = GoogleGenAI(
-    model="gemini-2.5-flash",   # fast and cost-effective Gemini model
+    model="gemini-2.5-flash",
     api_key=os.getenv("GEMINI_API_KEY")
 )
 
@@ -30,36 +32,67 @@ qa_prompt = PromptTemplate(
 
 # query function
 def run_query(question: str):
-    # 1. load chromadb persistent storage
     chroma_client = PersistentClient(path="chroma")
     chroma_collection = chroma_client.get_or_create_collection("studentcompass")
 
     vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-    # 2. load embedding model
     embed_model = HuggingFaceEmbedding(
         model_name="sentence-transformers/all-MiniLM-L6-v2"
     )
 
-    # 3. load the index from the vector store
     index = VectorStoreIndex.from_vector_store(
         vector_store=vector_store,
         storage_context=storage_context,
         embed_model=embed_model,
     )
 
-    # 4. create a query engine
     query_engine = index.as_query_engine(
         response_mode="compact",
         text_qa_template=qa_prompt,
-        similarity_top_k=3,
+        similarity_top_k=CURRENT_TOP_K,   # UPDATED
         use_async=False,
         streaming=False
     )
 
-    # 5. ask the question
     response = query_engine.query(question)
+
+    # return the answer text for evaluation
+    return str(response)
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        question = input("Enter your question: ")
+    else:
+        question = " ".join(sys.argv[1:])
+
+    chroma_client = PersistentClient(path="chroma")
+    chroma_collection = chroma_client.get_or_create_collection("studentcompass")
+
+    vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
+    storage_context = StorageContext.from_defaults(vector_store=vector_store)
+
+    embed_model = HuggingFaceEmbedding(
+        model_name="sentence-transformers/all-MiniLM-L6-v2"
+    )
+
+    index = VectorStoreIndex.from_vector_store(
+        vector_store=vector_store,
+        storage_context=storage_context,
+        embed_model=embed_model,
+    )
+
+    query_engine = index.as_query_engine(
+        response_mode="compact",
+        text_qa_template=qa_prompt,
+        similarity_top_k=CURRENT_TOP_K,   # UPDATED
+        use_async=False,
+        streaming=False
+    )
+
+    response = query_engine.query(question)
+
     print("\nQuestion:")
     print(question)
     print("\nAnswer:")
@@ -82,14 +115,5 @@ def run_query(question: str):
         print(f"  Type: {doc_type}")
 
         if summary:
-            print(f"  Summary: {summary[:150]}...")  #print first 150 characters
+            print(f"  Summary: {summary[:150]}...")
         print()
-
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        # if no argument provided, ask for input interactively
-        question = input("Enter your question: ")
-    else:
-        question = " ".join(sys.argv[1:])
-
-    run_query(question)

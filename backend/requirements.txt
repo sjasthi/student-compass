@@ -24,3 +24,7 @@ python-dotenv
 fastapi
 uvicorn
 pydantic
+
+# PPTX support
+unstructured[pptx]
+python-pptx

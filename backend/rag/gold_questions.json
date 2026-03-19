@@ -1,0 +1,311 @@
+{
+  "questions": [
+    {
+      "question": "When does Fall 2025 registration begin?",
+      "gold_answer": "Fall 2025 registration begins March 17, 2025.",
+      "citation": "“Monday, March 17, 2025 – Fall 2025 registration begins…”",
+      "document_type": "TXT"
+    },
+    {
+      "question": "When does Fall 2026 registration begin?",
+      "gold_answer": "Fall 2026 registration begins March 23, 2026.",
+      "citation": "“Monday, March 23, 2026 – Fall 2026 registration begins…”",
+      "document_type": "TXT"
+    },
+    {
+      "question": "When do Spring 2026 classes start?",
+      "gold_answer": "Spring 2026 classes start January 12, 2026.",
+      "citation": "“Monday, January 12, 2026 – Spring 2026 first session and full session courses begin.”",
+      "document_type": "TXT"
+    },
+    {
+      "question": "When do Spring 2027 classes start?",
+      "gold_answer": "Spring 2027 classes start January 11, 2027.",
+      "citation": "“Monday, January 11, 2027 – Spring 2027 first session and full session courses begin.”",
+      "document_type": "TXT"
+    },
+    {
+      "question": "When does Summer 2026 begin?",
+      "gold_answer": "Summer 2026 begins May 16, 2026.",
+      "citation": "“Saturday, May 16, 2026 – Summer 2026 first session and full session courses begin.”",
+      "document_type": "TXT"
+    },
+    {
+      "question": "When does the Fall 2025 waitlist close?",
+      "gold_answer": "The Fall 2025 waitlist closes August 20, 2025 at 11:59 AM.",
+      "citation": "“Wednesday, August 20, 2025 – Fall 2025 wait list closes at 11:59 AM.”",
+      "document_type": "TXT"
+    },
+    {
+      "question": "When is the Fall 2026 tuition payment deadline?",
+      "gold_answer": "The Fall 2026 tuition payment deadline is August 3, 2026.",
+      "citation": "“Monday, August 3, 2026 – Fall 2026 tuition payment deadline.”",
+      "document_type": "TXT"
+    },
+    {
+      "question": "When is Spring Break in 2026?",
+      "gold_answer": "Spring Break 2026 is March 8–14, 2026.",
+      "citation": "“Sunday–Saturday, March 8–14, 2026 – Spring Break.”",
+      "document_type": "TXT"
+    },
+    {
+      "question": "When is Spring Break in 2027?",
+      "gold_answer": "Spring Break 2027 is March 7–13, 2027.",
+      "citation": "“Sunday, March 7, 2027 – Spring Break…”",
+      "document_type": "TXT"
+    },
+    {
+      "question": "When does Fall 2025 end?",
+      "gold_answer": "Fall 2025 ends December 14, 2025.",
+      "citation": "“Sunday, December 14, 2025 – Fall 2025… courses end.”",
+      "document_type": "TXT"
+    },
+
+    {
+      "question": "What GPA is required for automatic first-year admission?",
+      "gold_answer": "A 2.75 GPA is required for automatic first-year admission.",
+      "citation": "“Automatic Admission – Requires a cumulative high school GPA of 2.75 or higher.”",
+      "document_type": "TXT"
+    },
+    {
+      "question": "What GPA is required for conditional first-year admission?",
+      "gold_answer": "A GPA between 2.5 and 2.75 is required for conditional admission.",
+      "citation": "“Conditional Admission – GPA between 2.5 and 2.75.”",
+      "document_type": "TXT"
+    },
+    {
+      "question": "What GPA is required for automatic transfer admission?",
+      "gold_answer": "A 2.0 GPA with 16+ transferable credits is required.",
+      "citation": "“Automatic Admission – Requires a cumulative GPA of 2.0 or higher… 16 transferable credits.”",
+      "document_type": "TXT"
+    },
+    {
+      "question": "What transcripts do first-year applicants need?",
+      "gold_answer": "High school transcript, any post-secondary transcripts, and AP scores.",
+      "citation": "“Applicants must submit: Official high school transcript… Official AP test scores…”",
+      "document_type": "TXT"
+    },
+    {
+      "question": "What transcripts do transfer students need?",
+      "gold_answer": "All post-secondary transcripts, including military, CLEP, and AP.",
+      "citation": "“Transfer applicants must submit official transcripts from all post-secondary institutions…”",
+      "document_type": "TXT"
+    },
+    {
+      "question": "What are the priority application deadlines?",
+      "gold_answer": "Fall: March 1, Spring: October 1, Summer: March 1.",
+      "citation": "“Priority Application Deadlines – Summer: March 1; Fall: March 1; Spring: October 1.”",
+      "document_type": "TXT"
+    },
+    {
+      "question": "How long do transcripts take to arrive?",
+      "gold_answer": "Transcripts typically take 7–10 business days to arrive.",
+      "citation": "“Transcripts typically take 7–10 business days to arrive.”",
+      "document_type": "TXT"
+    },
+
+    {
+      "question": "What is undergraduate tuition for 2025–2026?",
+      "gold_answer": "Undergraduate tuition is $302.84 per credit.",
+      "citation": "“Undergraduate: $302.84.”",
+      "document_type": "TXT"
+    },
+    {
+      "question": "What is graduate tuition?",
+      "gold_answer": "Graduate tuition is $555.28 per credit.",
+      "citation": "“Graduate: $555.28.”",
+      "document_type": "TXT"
+    },
+    {
+      "question": "What fees are charged per credit?",
+      "gold_answer": "Activity $4, Technology $14, Parking $13, and others.",
+      "citation": "“Activity Fee: $4… Technology Fee: $14… Parking Fee: $13…”",
+      "document_type": "DOCX"
+    },
+    {
+      "question": "What is the senior citizen tuition rate?",
+      "gold_answer": "The senior citizen tuition rate is $58.30 per credit.",
+      "citation": "“Total Cost: $58.30 per credit.”",
+      "document_type": "DOCX"
+    },
+    {
+      "question": "When does Fall 2026 financial aid disbursement begin?",
+      "gold_answer": "Fall 2026 financial aid disbursement begins September 11, 2026.",
+      "citation": "“Friday, September 11, 2026 – Fall 2026 financial aid disbursement begins.”",
+      "document_type": "TXT"
+    },
+    {
+      "question": "What does financial aid pay first?",
+      "gold_answer": "Financial aid is applied first to tuition, fees, and university charges.",
+      "citation": "“Aid is first applied to tuition, fees, and other university charges.”",
+      "document_type": "DOCX"
+    },
+    {
+      "question": "What is the North Star Promise Scholarship?",
+      "gold_answer": "It is a last-dollar scholarship covering remaining tuition and fees.",
+      "citation": "“It covers remaining tuition and fees after other federal and state grants…”",
+      "document_type": "TXT"
+    },
+    {
+      "question": "What happens if I withdraw from all classes?",
+      "gold_answer": "A Return to Title IV calculation may require repayment.",
+      "citation": "“Unearned aid must be returned to the federal government.”",
+      "document_type": "TXT"
+    },
+
+    {
+      "question": "How do students register?",
+      "gold_answer": "Students register through eServices.",
+      "citation": "“Students register for classes through eServices.”",
+      "document_type": "TXT"
+    },
+    {
+      "question": "What should students check before registering?",
+      "gold_answer": "DARs, holds, financial aid, placement, and advising.",
+      "citation": "“Review your Degree Audit Report… Check for registration holds…”",
+      "document_type": "TXT"
+    },
+    {
+      "question": "What is the add/drop policy?",
+      "gold_answer": "Students may add or drop courses during the published add/drop period.",
+      "citation": "“Students may add or drop courses during the published add/drop period.”",
+      "document_type": "TXT"
+    },
+    {
+      "question": "What is a withdrawal?",
+      "gold_answer": "A withdrawal results in a 'W' and may affect financial aid.",
+      "citation": "“A withdrawal results in a ‘W’… may impact financial aid.”",
+      "document_type": "TXT"
+    },
+    {
+      "question": "What delivery methods does Metro State offer?",
+      "gold_answer": "In-person, online asynchronous, online synchronous, hybrid, and HyFlex.",
+      "citation": "“In-Person… Online Asynchronous… HyFlex…”",
+      "document_type": "DOCX"
+    },
+    {
+      "question": "What is HyFlex?",
+      "gold_answer": "Students may choose in-person, synchronous, or asynchronous attendance each session.",
+      "citation": "“Students may choose to attend each class session in person, online synchronously, or online asynchronously.”",
+      "document_type": "DOCX"
+    },
+    {
+      "question": "When do Fall 2026 visiting students register?",
+      "gold_answer": "Fall 2026 visiting student registration opens June 8, 2026.",
+      "citation": "“June 8, 2026 – Fall visiting student registration opens.”",
+      "document_type": "TXT"
+    },
+
+    {
+      "question": "What is graduation?",
+      "gold_answer": "Graduation is the official confirmation of completing degree requirements.",
+      "citation": "“Official confirmation of completing all degree requirements.”",
+      "document_type": "PPTX"
+    },
+    {
+      "question": "What is commencement?",
+      "gold_answer": "Commencement is a ceremonial event and does not confirm degree completion.",
+      "citation": "“Ceremonial event… Does not confirm degree completion.”",
+      "document_type": "PPTX"
+    },
+    {
+      "question": "When is Fall 2025 Commencement?",
+      "gold_answer": "Fall 2025 Commencement is December 15, 2025.",
+      "citation": "“Date: Monday, December 15.”",
+      "document_type": "PPTX"
+    },
+    {
+      "question": "What are the honors GPA thresholds?",
+      "gold_answer": "Summa 3.900+, Magna 3.800–3.899, Cum Laude 3.700–3.799.",
+      "citation": "“Summa Cum Laude: GPA 3.900+…”",
+      "document_type": "PPTX"
+    },
+    {
+      "question": "How long until diplomas arrive?",
+      "gold_answer": "Diplomas arrive 8–10 weeks after degree posting.",
+      "citation": "“Arrive 8–10 weeks after degree posting.”",
+      "document_type": "PPTX"
+    },
+
+    {
+      "question": "How long do students have to file a grade appeal?",
+      "gold_answer": "Students have 60 days after grades are posted to file a grade appeal.",
+      "citation": "“Formal appeals must be initiated within 60 calendar days…”",
+      "document_type": "PDF"
+    },
+    {
+      "question": "What is required to change a grade?",
+      "gold_answer": "Clear and convincing proof of arbitrary or capricious evaluation.",
+      "citation": "“Unless there is clear and convincing proof that the evaluation had been arbitrary…”",
+      "document_type": "PDF"
+    },
+    {
+      "question": "What is academic integrity?",
+      "gold_answer": "Academic integrity means upholding honesty and acknowledging sources.",
+      "citation": "“High expectations for honesty in academic work…”",
+      "document_type": "PDF"
+    },
+    {
+      "question": "What happens if a student violates academic integrity?",
+      "gold_answer": "Sanctions are applied and recorded.",
+      "citation": "“Faculty… assign penalties… maintain accurate records of violations.”",
+      "document_type": "PDF"
+    },
+    {
+      "question": "What is FERPA?",
+      "gold_answer": "FERPA is a federal law protecting student education records.",
+      "citation": "“Must comply with the Family Educational Rights and Privacy Act (FERPA)…”",
+      "document_type": "PDF"
+    },
+
+    {
+      "question": "How does Metro State evaluate transfer credits?",
+      "gold_answer": "Based on quality, comparability, and applicability.",
+      "citation": "“Transfer… shall involve… educational quality… comparability… appropriateness…”",
+      "document_type": "PDF"
+    },
+    {
+      "question": "Does Metro State accept MnTC?",
+      "gold_answer": "Yes, Metro State accepts MnTC goal areas or the full MnTC.",
+      "citation": "“Will accept a Minnesota Transfer Curriculum course, goal area, or the entire curriculum.”",
+      "document_type": "PDF"
+    },
+    {
+      "question": "Who decides if transfer courses apply to a major?",
+      "gold_answer": "The academic department decides applicability.",
+      "citation": "“The faculty… will determine applicability of transfer courses…”",
+      "document_type": "PDF"
+    },
+
+    {
+      "question": "What does academic advising help with?",
+      "gold_answer": "Degree planning, DARs, and course selection.",
+      "citation": "“Academic advisors help students understand degree requirements…”",
+      "document_type": "DOCX"
+    },
+    {
+      "question": "What does the Writing Center help with?",
+      "gold_answer": "Essays, research papers, and writing assignments.",
+      "citation": "“The Writing Center supports students with essays, research papers…”",
+      "document_type": "DOCX"
+    },
+    {
+      "question": "How do students request accommodations?",
+      "gold_answer": "Through the Center for Accessibility Resources.",
+      "citation": "“Students with disabilities may request academic accommodations…”",
+      "document_type": "DOCX"
+    },
+    {
+      "question": "What does Career Services offer?",
+      "gold_answer": "Resume help, job search support, interview prep, and internships.",
+      "citation": "“Career Services assists students with resume development, job searching…”",
+      "document_type": "DOCX"
+    },
+    {
+      "question": "Who helps with financial aid, registration, and billing?",
+      "gold_answer": "Gateway Student Services.",
+      "citation": "“Gateway provides support for questions related to financial aid, registration…”",
+      "document_type": "DOCX"
+    }
+  ]
+}

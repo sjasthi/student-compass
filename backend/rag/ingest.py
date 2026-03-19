@@ -20,7 +20,6 @@ from llama_index.core.schema import MetadataMode
 
 load_dotenv()
 
-
 # configure Vertex AI LLM using environment variables
 Settings.llm = GoogleGenAI(
     model="gemini-2.5-flash",
@@ -32,7 +31,7 @@ def run_ingestion():
     documents = SimpleDirectoryReader(
         input_dir="data",
         recursive=True,
-        required_exts=[".txt", ".pdf", ".docx"]
+        required_exts=[".txt", ".pdf", ".docx", ".pptx"]
     ).load_data()
 
     urls = [
@@ -49,6 +48,9 @@ def run_ingestion():
     # this helps verify that all file types (.txt, .docx, .pdf, URLs) were detected correctly
     # and that folder-based doc_type classification is working as expected.
     print("\nLoaded documents:")
+
+    seen_files = set()  # each file only prints once
+
     for doc in documents:
         path = doc.metadata.get("file_path")
 
@@ -58,15 +60,30 @@ def run_ingestion():
             doc.metadata["source_type"] = "url"
             doc.metadata["doc_type"] = "web_page"
 
-        else:
-            # local documents
-            doc.metadata["source_type"] = "local_file"
+            print(f"- {path}  (doc_type: {doc.metadata['doc_type']})")
+            continue
 
-            # extract folder name as doc_type
-            folder = os.path.basename(os.path.dirname(path))
-            doc.metadata["doc_type"] = folder
+        # local documents
+        doc.metadata["source_type"] = "local_file"
 
-        print(f"- {path}  (doc_type: {doc.metadata['doc_type']})")
+        # extract folder name as doc_type
+        folder = os.path.basename(os.path.dirname(path))
+        doc.metadata["doc_type"] = folder
+
+        # print each file only once
+        if path not in seen_files:
+            seen_files.add(path)
+            print(f"- {path}  (doc_type: {doc.metadata['doc_type']})")
+
+    # --- NEW: Count unique loaded FILES ---
+    unique_loaded_files = set()
+
+    for doc in documents:
+        path = doc.metadata.get("file_path") or doc.metadata.get("url")
+        unique_loaded_files.add(path)
+
+    print(f"\nTotal loaded FILES: {len(unique_loaded_files)}")
+    print(f"Total loaded DOCUMENT OBJECTS: {len(documents)}")
 
     CONCEPTUAL_TYPES = {
         "admissions",
@@ -78,20 +95,26 @@ def run_ingestion():
         "tuition_fees"
     }
 
-    print("\nGenerating document summaries (conceptual docs only)...")
-
-    for doc in documents:
-        doc_type = doc.metadata.get("doc_type")
-
-        if doc_type in CONCEPTUAL_TYPES:
-            prompt = f"Summarize this document in 4–6 sentences. Focus on the main themes, categories, and purpose.\n\nDocument:\n{doc.text}"
-
-            summary = Settings.llm.complete(prompt).text.strip()
-            doc.metadata["summary"] = summary
-
-            print(f"✓ Summary added for {doc_type} document")
-        else:
-            print(f"- Skipped summary for {doc_type} (not conceptual)")
+    # ---------------------------------------------------------
+    # COMMENTED OUT FOR DEMO SPEED — LLM SUMMARIES ARE SLOW
+    # ---------------------------------------------------------
+    # print("\nGenerating document summaries (conceptual docs only)...")
+    #
+    # for doc in documents:
+    #     doc_type = doc.metadata.get("doc_type")
+    #
+    #     if doc_type in CONCEPTUAL_TYPES:
+    #         prompt = f"Summarize this document in 4–6 sentences. Focus on the main themes, categories, and purpose.\n\nDocument:\n{doc.text}"
+    #
+    #         summary = Settings.llm.complete(prompt).text.strip()
+    #         doc.metadata["summary"] = summary
+    #
+    #         print(f"✓ Summary added for {doc_type} document")
+    #     else:
+    #         print(f"- Skipped summary for {doc_type} (not conceptual)")
+    # ---------------------------------------------------------
+    print("\nSkipping summaries for demo speed...")
+    # ---------------------------------------------------------
 
     # 2. create embeddings (convert text into vectors)
     embed_model = HuggingFaceEmbedding(
@@ -108,6 +131,17 @@ def run_ingestion():
 
     parser = SentenceSplitter(chunk_size=1024, chunk_overlap=100)
 
+    # clean metadata to ensure it's flat (Chroma requirement)
+    for doc in documents:
+        clean_meta = {}
+        for k, v in doc.metadata.items():
+            if isinstance(v, (str, int, float)) or v is None:
+                clean_meta[k] = v
+            else:
+                # drop non-flat metadata like lists/dicts
+                continue
+        doc.metadata = clean_meta
+
     # 4. take documents and split them into chunks
     index = VectorStoreIndex.from_documents(
         documents,
@@ -119,6 +153,35 @@ def run_ingestion():
 
     print("After ingestion, collection has:", chroma_collection.count(), "embeddings")
     print("Ingestion complete! Vector store saved to /chroma")
+
+    # --- List ingested files ---
+    client = PersistentClient(path="chroma")
+    collection = client.get_or_create_collection("studentcompass")
+
+    results = collection.get(include=["metadatas"])
+
+    files = set()
+
+    for meta in results["metadatas"]:
+        if "file_path" in meta:
+            files.add(meta["file_path"])
+        elif "url" in meta:
+            files.add(meta["url"])
+
+    print("\nFiles actually ingested:")
+    for f in files:
+        print("-", f)
+
+    print(f"\nTotal ingested documents: {len(files)}")
+
+    # --- Ingestion Summary ---
+    print("\n===== INGESTION SUMMARY =====")
+    print(f"Loaded files: {len(unique_loaded_files)}")
+    print(f"Loaded document objects: {len(documents)}")
+    print(f"Ingested files: {len(files)}")
+    print(f"New embeddings added: {chroma_collection.count()}")
+    print("================================")
+
 
 if __name__ == "__main__":
     run_ingestion()
