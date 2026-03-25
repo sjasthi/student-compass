@@ -26,16 +26,15 @@ Settings.llm = GoogleGenAI(
     api_key=os.getenv("GEMINI_API_KEY")
 )
 
-def run_ingestion():
+def run_ingestion(chunk_size=1024):
     # 1. load documents from data folder and from URLs
     documents = SimpleDirectoryReader(
-        input_dir="data",
+        input_dir="rag/data",
         recursive=True,
         required_exts=[".txt", ".pdf", ".docx", ".pptx"]
     ).load_data()
 
     urls = [
-        "https://www.factretriever.com/bird-facts",
         "https://www.metrostate.edu/about/mission",
         # add more URLS here
     ]
@@ -122,14 +121,18 @@ def run_ingestion():
     )
 
     # 3. set up ChromaDB persistent storage
-    chroma_client = PersistentClient(path="chroma")
+    chroma_client = PersistentClient(path="rag/chroma")
     chroma_collection = chroma_client.get_or_create_collection("studentcompass")
     print("\nBefore ingestion, collection has:", chroma_collection.count(), "embeddings")
 
     vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-    parser = SentenceSplitter(chunk_size=1024, chunk_overlap=100)
+    # --- FIXED: create parser using the chunk_size argument ---
+    parser = SentenceSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=100
+    )
 
     # clean metadata to ensure it's flat (Chroma requirement)
     for doc in documents:
@@ -155,7 +158,7 @@ def run_ingestion():
     print("Ingestion complete! Vector store saved to /chroma")
 
     # --- List ingested files ---
-    client = PersistentClient(path="chroma")
+    client = PersistentClient(path="rag/chroma")
     collection = client.get_or_create_collection("studentcompass")
 
     results = collection.get(include=["metadatas"])
@@ -183,5 +186,10 @@ def run_ingestion():
     print("================================")
 
 
+# --- FIXED: allow optional chunk_size argument from command line ---
 if __name__ == "__main__":
-    run_ingestion()
+    import sys
+    if len(sys.argv) > 1:
+        run_ingestion(chunk_size=int(sys.argv[1]))
+    else:
+        run_ingestion()

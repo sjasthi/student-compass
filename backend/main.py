@@ -55,11 +55,13 @@ query_engine = index.as_query_engine()
 # request model
 class QueryRequest(BaseModel):
     question: str
+    top_k: int = 3
 
 # API endpoint
 @app.post("/query")
 def query(req: QueryRequest):
-    response = query_engine.query(req.question)
+    engine = index.as_query_engine(similarity_top_k=req.top_k)
+    response = engine.query(req.question)
 
     sources = []
     for node in response.source_nodes:

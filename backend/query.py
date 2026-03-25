@@ -32,7 +32,7 @@ qa_prompt = PromptTemplate(
 
 # query function
 def run_query(question: str):
-    chroma_client = PersistentClient(path="chroma")
+    chroma_client = PersistentClient(path="rag/chroma")
     chroma_collection = chroma_client.get_or_create_collection("studentcompass")
 
     vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
@@ -67,7 +67,7 @@ if __name__ == "__main__":
     else:
         question = " ".join(sys.argv[1:])
 
-    chroma_client = PersistentClient(path="chroma")
+    chroma_client = PersistentClient(path="rag/chroma")
     chroma_collection = chroma_client.get_or_create_collection("studentcompass")
 
     vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
