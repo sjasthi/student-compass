@@ -1,6 +1,18 @@
 // src/components/FileList.jsx
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { getDownloadUrl, deleteFile } from "../api/uploadService";
+
+const TYPE_LABELS = {
+  admissions:      "Admissions",
+  financial_aid:   "Financial Aid",
+  graduation:      "Graduation",
+  policies:        "Policies",
+  registration:    "Registration",
+  student_support: "Student Support",
+  tuition_fees:    "Tuition & Fees",
+  web_page:        "Web Page",
+  general:         "General",
+};
 
 /**
  * FileList component
@@ -9,12 +21,18 @@ import { getDownloadUrl, deleteFile } from "../api/uploadService";
  *   onRefresh   — callback to reload file list
  *   onError     — callback(message) for error notifications
  *   onSuccess   — callback(message) for success notifications
+ *   onUpdate    — callback(newFile, existingFileRecord) triggered when admin
+ *                 selects a replacement file for an existing entry
  */
-export default function FileList({ files, onRefresh, onError, onSuccess }) {
-  const [loadingBlob, setLoadingBlob]   = useState(null); // blob being downloaded
-  const [deletingBlob, setDeletingBlob] = useState(null); // blob being deleted
+export default function FileList({ files, onRefresh, onError, onSuccess, onUpdate }) {
+  const [loadingBlob, setLoadingBlob]   = useState(null);
+  const [deletingBlob, setDeletingBlob] = useState(null);
 
-  // ── Download ───────────────────────────────
+  // A single hidden file input shared across all rows.
+  // pendingUpdateRef tracks which file record is being replaced.
+  const fileInputRef     = useRef(null);
+  const pendingUpdateRef = useRef(null);
+
   const handleDownload = async (blobName, filename) => {
     setLoadingBlob(blobName);
     try {
@@ -32,13 +50,12 @@ export default function FileList({ files, onRefresh, onError, onSuccess }) {
     }
   };
 
-  // ── Delete ─────────────────────────────────
   const handleDelete = async (blobName) => {
-    if (!window.confirm("Mark this file as inactive? It will no longer appear in the list.")) return;
+    if (!window.confirm("Delete this file? It will be removed from GCS and the search index.")) return;
     setDeletingBlob(blobName);
     try {
       await deleteFile(blobName);
-      onSuccess?.("File removed successfully.");
+      onSuccess?.("File deleted and removed from index.");
       onRefresh?.();
     } catch (err) {
       onError?.(`Delete failed: ${err.message}`);
@@ -47,19 +64,35 @@ export default function FileList({ files, onRefresh, onError, onSuccess }) {
     }
   };
 
-  // ── File type icon ─────────────────────────
+  // Opens the system file picker for the given file record.
+  const handleUpdateClick = (fileRecord) => {
+    pendingUpdateRef.current = fileRecord;
+    // Reset so selecting the same file path still fires onChange
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+      fileInputRef.current.click();
+    }
+  };
+
+  // Called when the user picks a replacement file from their directory.
+  const handleFileChosen = (e) => {
+    const chosen = e.target.files?.[0];
+    if (!chosen || !pendingUpdateRef.current) return;
+    onUpdate?.(chosen, pendingUpdateRef.current);
+    pendingUpdateRef.current = null;
+  };
+
   const fileIcon = (filename = "") => {
-    const ext = filename.split(".").pop().toLowerCase();
+    const ext   = filename.split(".").pop().toLowerCase();
     const icons = { pdf: "📄", doc: "📝", docx: "📝", txt: "🗒️", md: "🗒️" };
     return icons[ext] || "📁";
   };
 
-  // ── Format date ────────────────────────────
   const formatDate = (isoString) => {
     if (!isoString) return "—";
     return new Date(isoString).toLocaleDateString("en-US", {
       year: "numeric", month: "short", day: "numeric",
-      hour: "2-digit", minute: "2-digit"
+      hour: "2-digit", minute: "2-digit",
     });
   };
 
@@ -73,15 +106,21 @@ export default function FileList({ files, onRefresh, onError, onSuccess }) {
 
   return (
     <div className="mt-6">
+      {/* Hidden file input — shared by all Update buttons */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.doc,.docx,.txt,.md"
+        className="hidden"
+        onChange={handleFileChosen}
+      />
+
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-lg font-semibold text-gray-800">
           Uploaded Files
           <span className="ml-2 text-sm font-normal text-gray-400">({files.length})</span>
         </h3>
-        <button
-          onClick={onRefresh}
-          className="text-xs text-blue-600 hover:underline"
-        >
+        <button onClick={onRefresh} className="text-xs text-blue-600 hover:underline">
           ↻ Refresh
         </button>
       </div>
@@ -91,6 +130,7 @@ export default function FileList({ files, onRefresh, onError, onSuccess }) {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">File</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Size</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Uploaded</th>
@@ -100,18 +140,24 @@ export default function FileList({ files, onRefresh, onError, onSuccess }) {
           <tbody className="bg-white divide-y divide-gray-100">
             {files.map((file) => (
               <tr key={file.blob_name} className="hover:bg-gray-50 transition-colors">
+
                 {/* File name */}
                 <td className="px-4 py-3 font-medium text-gray-800 max-w-xs truncate">
                   <span className="mr-2">{fileIcon(file.original_filename)}</span>
                   {file.original_filename}
                 </td>
 
+                {/* Category badge */}
+                <td className="px-4 py-3">
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium whitespace-nowrap">
+                    {TYPE_LABELS[file.doc_type] || file.doc_type || "General"}
+                  </span>
+                </td>
+
                 {/* Source */}
                 <td className="px-4 py-3 text-gray-500">
                   {file.source === "url_upload" ? (
-                    <span title={file.source_url} className="text-blue-500 cursor-help">
-                      🔗 URL
-                    </span>
+                    <span title={file.source_url} className="text-blue-500 cursor-help">🔗 URL</span>
                   ) : (
                     <span>📤 File</span>
                   )}
@@ -136,7 +182,14 @@ export default function FileList({ files, onRefresh, onError, onSuccess }) {
                     disabled={loadingBlob === file.blob_name}
                     className="text-blue-600 hover:underline disabled:opacity-40 text-xs font-medium"
                   >
-                    {loadingBlob === file.blob_name ? "Getting link..." : "Download"}
+                    {loadingBlob === file.blob_name ? "Getting link…" : "Download"}
+                  </button>
+                  <span className="text-gray-300">|</span>
+                  <button
+                    onClick={() => handleUpdateClick(file)}
+                    className="text-amber-600 hover:underline text-xs font-medium"
+                  >
+                    Update
                   </button>
                   <span className="text-gray-300">|</span>
                   <button
@@ -144,7 +197,7 @@ export default function FileList({ files, onRefresh, onError, onSuccess }) {
                     disabled={deletingBlob === file.blob_name}
                     className="text-red-500 hover:underline disabled:opacity-40 text-xs font-medium"
                   >
-                    {deletingBlob === file.blob_name ? "Removing..." : "Remove"}
+                    {deletingBlob === file.blob_name ? "Removing…" : "Remove"}
                   </button>
                 </td>
               </tr>

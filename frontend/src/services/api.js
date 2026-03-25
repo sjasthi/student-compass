@@ -1,20 +1,30 @@
+// src/services/api.js
+// Non-streaming fallback for any component that prefers a simple Promise.
+// Home.jsx uses /query/stream directly for better perceived performance.
+
+const API_BASE = import.meta.env.VITE_APP_API_URL || 'http://localhost:5000';
+
 /**
- * Sends a question to the backend API and returns the parsed JSON response.
+ * Send a question and wait for the complete answer (non-streaming).
  *
- * @param {string} question - The question to ask the backend.
- * @returns {Promise<object>} Response data containing `answer` and `sources`.
+ * @param   {string} question
+ * @returns {Promise<{ answer: string, sources: Array }>}
  */
 export async function askQuestion(question) {
-  const response = await fetch('http://localhost:8000/ask', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ question }),
+  const response = await fetch(`${API_BASE}/query`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ question }),
   });
 
   if (!response.ok) {
-    throw new Error(`HTTP error! Status: ${response.status}`);
+    let errorMsg = `Server error (${response.status})`;
+    try {
+      const err = await response.json();
+      errorMsg  = err.error || errorMsg;
+    } catch { /* ignore */ }
+    throw new Error(errorMsg);
   }
-  return await response.json();
+
+  return response.json();
 }
