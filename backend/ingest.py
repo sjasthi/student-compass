@@ -128,7 +128,6 @@ def run_ingestion(chunk_size=1024):
     vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-    # --- FIXED: create parser using the chunk_size argument ---
     parser = SentenceSplitter(
         chunk_size=chunk_size,
         chunk_overlap=100

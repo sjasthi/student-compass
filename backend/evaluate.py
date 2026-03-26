@@ -7,6 +7,7 @@ import requests
 import sys
 import csv
 from sentence_transformers import SentenceTransformer, util
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def query(question, top_k):
     response = requests.post(
@@ -18,6 +19,7 @@ def query(question, top_k):
 scoring_model = SentenceTransformer("all-MiniLM-L6-v2")
 experiment_results = []
 
+
 def safe_rmtree(path, retries=20, delay=0.2):
     for _ in range(retries):
         try:
@@ -27,21 +29,33 @@ def safe_rmtree(path, retries=20, delay=0.2):
             time.sleep(delay)
     raise PermissionError(f"Could not delete {path} after multiple retries")
 
+
 def load_gold_questions():
     with open("gold_questions.json", encoding="utf-8") as f:
         return json.load(f)["questions"]
 
+
 def run_all_50_questions(gold_questions, top_k):
     results = []
-    for i, item in enumerate(gold_questions, start=1):
-        print(f"Running question {i}/{len(gold_questions)}")
+
+    def process_question(item):
         model_answer = query(item["question"], top_k)
-        results.append({
+        return {
             "question": item["question"],
             "gold_answer": item["gold_answer"],
             "model_answer": model_answer
-        })
+        }
+
+    # use 10 threads to evaluate multiple questions concurrently
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(process_question, item): item for item in gold_questions}
+
+        for i, future in enumerate(as_completed(futures), start=1):
+            print(f"Completed {i}/{len(gold_questions)}")
+            results.append(future.result())
+
     return results
+
 
 def score_results(results):
     scores = []
@@ -135,7 +149,7 @@ def stop_server(proc):
 # MAIN LOOP
 # -----------------------------
 
-gold_questions = load_gold_questions()[:10]
+gold_questions = load_gold_questions()[:50]
 CHROMA_PATH = "rag/chroma"
 
 for chunk_size in [200, 300, 500, 800, 1000, 1200]:
@@ -152,11 +166,20 @@ for chunk_size in [200, 300, 500, 800, 1000, 1200]:
 
     server_proc = start_server()
 
-    for top_k in [1, 2, 3]:
-        print(f"\n--- Evaluating top_k={top_k} ---")
-        results = run_all_50_questions(gold_questions, top_k)
+    def evaluate_top_k(k):
+        print(f"\n--- Evaluating top_k={k} ---")
+        results = run_all_50_questions(gold_questions, k)
         accuracy = score_results(results)
-        save_scores(chunk_size, top_k, accuracy)
+        save_scores(chunk_size, k, accuracy)
+        return k, accuracy
+
+    # run top_k = 1,2,3 in parallel
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = [executor.submit(evaluate_top_k, k) for k in [1, 2, 3]]
+
+        for future in as_completed(futures):
+            k, acc = future.result()
+            print(f"Finished top_k={k} with accuracy={acc:.2f}")
 
     stop_server(server_proc)
     time.sleep(0.5)

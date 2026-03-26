@@ -14,7 +14,7 @@ from llama_index.core.prompts import PromptTemplate
 
 load_dotenv()
 
-# NEW: global variable for evaluation
+# global variable for evaluation
 CURRENT_TOP_K = 3
 
 # configure Vertex AI LLM using environment variables
