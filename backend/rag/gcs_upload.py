@@ -5,8 +5,14 @@
 #   • Exposes /query         for a complete JSON response
 #   • Exposes /query/stream  for a token-by-token Server-Sent Events stream
 #   • Exposes /sync          for manual full re-synchronisation
+#   • Exposes /test/run      for streaming RAG evaluation (SSE)
+#   • Exposes /test/download for downloading results as CSV
 
 import os
+import io
+import csv
+import json
+import shutil
 import uuid
 import logging
 import threading
@@ -20,8 +26,8 @@ from google.cloud import storage
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
-from ingest import ingest_blob, remove_blob_from_chroma, sync_with_gcs
-from query import run_query, run_query_stream
+from ingest import ingest_blob, remove_blob_from_chroma, sync_with_gcs, run_gcs_test_ingestion
+from query import run_query, run_query_stream, run_query_for_eval
 
 load_dotenv()
 
@@ -37,6 +43,10 @@ CORS(app)
 GCS_BUCKET_NAME    = os.environ.get("GCS_BUCKET_NAME", "your-bucket-name")
 ALLOWED_EXTENSIONS = {"pdf", "doc", "docx", "txt", "md"}
 MAX_FILE_SIZE_MB   = 50
+
+# Evaluation / test configuration
+TEST_CHROMA_PATH    = os.environ.get("TEST_CHROMA_PATH",    "rag/chroma_test")
+GOLD_QUESTIONS_PATH = os.environ.get("GOLD_QUESTIONS_PATH", "gold_questions.json")
 
 # ─────────────────────────────────────────────
 # GCS Client
@@ -154,31 +164,24 @@ def upload_from_url():
     if not url.startswith(("http://", "https://")):
         return jsonify({"error": "Invalid URL — must start with http:// or https://"}), 400
 
-    # Map MIME types to file extensions for URLs with no extension in the path
     MIME_TO_EXT = {
         "application/pdf":    ".pdf",
         "text/plain":         ".txt",
         "text/markdown":      ".md",
         "application/msword": ".doc",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
-        # text/html is handled separately via trafilatura — not listed here
     }
 
     try:
         with requests.get(url, stream=True, timeout=15) as resp:
             resp.raise_for_status()
             content_type = resp.headers.get("Content-Type", "application/octet-stream").split(";")[0].strip()
-
-            # Try to get a filename and extension from the URL path first
             raw_name = url.split("/")[-1].split("?")[0].strip().strip("/")
-
-            is_html = content_type in ("text/html", "application/xhtml+xml")
+            is_html  = content_type in ("text/html", "application/xhtml+xml")
 
             if raw_name and "." in raw_name and allowed_file(raw_name) and not is_html:
-                # URL path already ends with a valid supported extension (non-HTML)
                 filename = raw_name
             elif is_html:
-                # For HTML pages, extract clean text via trafilatura and store as .txt
                 html_bytes = resp.content
                 extracted  = trafilatura.extract(
                     html_bytes,
@@ -196,17 +199,14 @@ def upload_from_url():
                     }), 400
 
                 base     = raw_name or url.split("/")[2].replace(".", "_") or "webpage"
-                # Strip any existing extension so we always save as .txt
                 base     = base.rsplit(".", 1)[0] if "." in base else base
                 filename = f"{base}.txt"
 
+                blob_name = generate_blob_name(filename)
                 if replace_old:
                     delete_old_versions(filename)
-
-                blob_name    = generate_blob_name(filename)
-                blob         = bucket.blob(blob_name)
-                clean_bytes  = extracted.encode("utf-8")
-                blob.upload_from_string(clean_bytes, content_type="text/plain; charset=utf-8")
+                blob = bucket.blob(blob_name)
+                blob.upload_from_string(extracted.encode("utf-8"), content_type="text/plain")
                 blob.metadata = {
                     "original_filename": filename,
                     "replace_old": str(replace_old),
@@ -228,7 +228,6 @@ def upload_from_url():
                     "replace_old":       replace_old,
                 }), 200
             else:
-                # Fall back to deriving the extension from the Content-Type header
                 ext = MIME_TO_EXT.get(content_type)
                 if ext is None:
                     return jsonify({
@@ -303,7 +302,6 @@ def list_files():
             })
         file_list.sort(key=lambda x: x["updated"] or "", reverse=True)
         return jsonify({"files": file_list, "count": len(file_list)}), 200
-
     except Exception as exc:
         return jsonify({"error": f"Could not list files: {exc}"}), 500
 
@@ -375,8 +373,7 @@ def query_knowledge_base():
 @app.route("/query/stream", methods=["POST"])
 def query_stream():
     """
-    Streams the answer token-by-token so the UI can render text as it arrives
-    rather than waiting for the full Gemini response.
+    Streams the answer token-by-token so the UI can render text as it arrives.
 
     Request:  { "question": "..." }
     Response: text/event-stream
@@ -395,8 +392,8 @@ def query_stream():
         stream_with_context(run_query_stream(question)),
         mimetype="text/event-stream",
         headers={
-            "Cache-Control":    "no-cache",
-            "X-Accel-Buffering": "no",   # disable nginx buffering if behind a proxy
+            "Cache-Control":     "no-cache",
+            "X-Accel-Buffering": "no",
         },
     )
 
@@ -407,6 +404,211 @@ def query_stream():
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"}), 200
+
+
+# ═════════════════════════════════════════════
+# Evaluation / Test endpoints
+# ═════════════════════════════════════════════
+
+# Lazy-loaded scoring model (avoids import cost at startup)
+_scoring_model      = None
+_scoring_model_lock = threading.Lock()
+
+
+def _get_scoring_model():
+    global _scoring_model
+    with _scoring_model_lock:
+        if _scoring_model is None:
+            from sentence_transformers import SentenceTransformer
+            logger.info("Loading scoring model for evaluation…")
+            _scoring_model = SentenceTransformer("all-MiniLM-L6-v2")
+            logger.info("Scoring model ready.")
+    return _scoring_model
+
+
+def _score_answer(gold: str, predicted: str) -> int:
+    """
+    Compare gold vs predicted answer using cosine similarity.
+    Returns 0–3 score:  3 = perfect, 2 = good, 1 = partial, 0 = incorrect.
+    """
+    from sentence_transformers import util as st_util
+    model    = _get_scoring_model()
+    emb_gold = model.encode(gold,      convert_to_tensor=True)
+    emb_pred = model.encode(predicted, convert_to_tensor=True)
+    sim      = st_util.cos_sim(emb_gold, emb_pred).item()
+    if   sim > 0.85: return 3
+    elif sim > 0.70: return 2
+    elif sim > 0.50: return 1
+    else:            return 0
+
+
+def _sse(event_type: str, value) -> str:
+    """Format a single Server-Sent Event line."""
+    return f"data: {json.dumps({'type': event_type, 'value': value})}\n\n"
+
+
+# ─────────────────────────────────────────────
+# Route 10: Run Evaluation — SSE stream
+# ─────────────────────────────────────────────
+@app.route("/test/run", methods=["POST"])
+def run_evaluation():
+    """
+    Runs a full RAG accuracy evaluation over the gold questions file.
+    Streams progress and results back as Server-Sent Events.
+
+    Request JSON:
+    {
+      "chunk_sizes":   [500, 1000],          // which chunk sizes to test
+      "top_k_values":  [1, 3, 5],            // retrieval top-k values
+      "temperatures":  [0.2, 0.7],           // LLM temperature values
+      "top_p_values":  [0.9, 0.95],          // LLM nucleus-sampling values
+      "num_questions": 50                    // how many gold Qs to use (max 50)
+    }
+
+    SSE event types:
+      progress — status text update (string)
+      result   — one completed experiment row (object)
+      done     — all experiments finished (array of all results)
+      error    — unrecoverable failure (string)
+    """
+    config        = request.get_json(force=True) or {}
+    chunk_sizes   = config.get("chunk_sizes",   [500])
+    top_k_values  = config.get("top_k_values",  [3])
+    temperatures  = config.get("temperatures",  [0.7])
+    top_p_values  = config.get("top_p_values",  [0.9])
+    num_questions = min(int(config.get("num_questions", 50)), 50)
+
+    def generate():
+        # ── Load gold questions ──────────────────────────────────────────
+        try:
+            with open(GOLD_QUESTIONS_PATH, encoding="utf-8") as f:
+                gold_questions = json.load(f)["questions"][:num_questions]
+        except FileNotFoundError:
+            yield _sse("error", f"gold_questions.json not found at '{GOLD_QUESTIONS_PATH}'. "
+                                 "Set GOLD_QUESTIONS_PATH in your .env.")
+            return
+        except Exception as exc:
+            yield _sse("error", f"Could not load gold_questions.json: {exc}")
+            return
+
+        yield _sse("progress", f"Loaded {len(gold_questions)} gold questions.")
+
+        # Pre-warm scoring model so the first question isn't slow
+        yield _sse("progress", "Loading scoring model…")
+        try:
+            _get_scoring_model()
+        except Exception as exc:
+            yield _sse("error", f"Could not load scoring model: {exc}")
+            return
+        yield _sse("progress", "Scoring model ready.")
+
+        all_results = []
+        total_runs  = len(chunk_sizes) * len(top_k_values) * len(temperatures) * len(top_p_values)
+        run_num     = 0
+
+        for chunk_size in chunk_sizes:
+
+            # ── Rebuild test Chroma with this chunk_size ─────────────────
+            yield _sse("progress", f"▶ Building vector store — chunk_size={chunk_size}…")
+            try:
+                if os.path.exists(TEST_CHROMA_PATH):
+                    shutil.rmtree(TEST_CHROMA_PATH)
+                count = run_gcs_test_ingestion(chunk_size, TEST_CHROMA_PATH)
+                yield _sse("progress", f"  Vector store ready: {count} embeddings.")
+            except ValueError as exc:
+                yield _sse("error", str(exc))
+                return
+            except Exception as exc:
+                yield _sse("error", f"Ingestion failed for chunk_size={chunk_size}: {exc}")
+                continue
+
+            for top_k in top_k_values:
+                for temperature in temperatures:
+                    for top_p in top_p_values:
+                        run_num += 1
+                        label = (f"chunk={chunk_size}  top_k={top_k}  "
+                                 f"temp={temperature}  top_p={top_p}  "
+                                 f"[{run_num}/{total_runs}]")
+                        yield _sse("progress", f"  Evaluating — {label}")
+
+                        scores = []
+                        for i, item in enumerate(gold_questions):
+                            try:
+                                model_answer = run_query_for_eval(
+                                    item["question"],
+                                    top_k=top_k,
+                                    temperature=temperature,
+                                    top_p=top_p,
+                                    chroma_path=TEST_CHROMA_PATH,
+                                )
+                                score = _score_answer(item["gold_answer"], model_answer)
+                            except Exception as exc:
+                                logger.warning("Question %d failed: %s", i, exc)
+                                score = 0
+                            scores.append(score)
+
+                            # Emit progress every 10 questions
+                            if (i + 1) % 10 == 0 or (i + 1) == len(gold_questions):
+                                yield _sse(
+                                    "progress",
+                                    f"    {i + 1}/{len(gold_questions)} questions evaluated…"
+                                )
+
+                        accuracy = round(sum(scores) / len(scores), 2) if scores else 0.0
+                        result   = {
+                            "chunk_size":      chunk_size,
+                            "top_k":           top_k,
+                            "temperature":     temperature,
+                            "top_p":           top_p,
+                            "accuracy":        accuracy,
+                            "total_questions": len(scores),
+                        }
+                        all_results.append(result)
+                        yield _sse("result", result)
+
+        # ── All done ────────────────────────────────────────────────────
+        yield _sse("progress", "✅ Evaluation complete.")
+        yield _sse("done", all_results)
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control":     "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ─────────────────────────────────────────────
+# Route 11: Download test results as CSV
+# ─────────────────────────────────────────────
+@app.route("/test/download", methods=["POST"])
+def download_test_results():
+    """
+    Accepts an array of result objects and returns a downloadable CSV.
+
+    Request JSON: [ { chunk_size, top_k, temperature, top_p, accuracy, total_questions }, ... ]
+    Response:     text/csv attachment
+    """
+    results = request.get_json(force=True) or []
+    if not results:
+        return jsonify({"error": "No results provided"}), 400
+
+    output  = io.StringIO()
+    writer  = csv.DictWriter(
+        output,
+        fieldnames=["chunk_size", "top_k", "temperature", "top_p", "accuracy", "total_questions"],
+        extrasaction="ignore",
+    )
+    writer.writeheader()
+    writer.writerows(results)
+
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=rag_test_results.csv"},
+    )
 
 
 # ─────────────────────────────────────────────

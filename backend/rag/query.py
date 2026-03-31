@@ -1,7 +1,8 @@
 # query.py
 # Load the ChromaDB vector store and answer questions.
-# run_query()         → returns a complete dict (used by non-streaming callers)
-# run_query_stream()  → generator that yields Server-Sent Event strings
+# run_query()          → returns a complete dict (used by non-streaming callers)
+# run_query_stream()   → generator that yields Server-Sent Event strings
+# run_query_for_eval() → evaluation helper that accepts temperature / top_p / chroma_path
 
 import sys
 import os
@@ -55,10 +56,10 @@ QA_PROMPT = PromptTemplate(
 # ─────────────────────────────────────────────
 # Shared index builder
 # ─────────────────────────────────────────────
-def _build_index():
+def _build_index(chroma_path: str = CHROMA_PATH, collection_name: str = CHROMA_COLLECTION):
     """Connect to Chroma and return a loaded VectorStoreIndex, or None if empty."""
-    chroma_client     = PersistentClient(path=CHROMA_PATH)
-    chroma_collection = chroma_client.get_or_create_collection(CHROMA_COLLECTION)
+    chroma_client     = PersistentClient(path=chroma_path)
+    chroma_collection = chroma_client.get_or_create_collection(collection_name)
 
     if chroma_collection.count() == 0:
         return None, chroma_collection
@@ -204,6 +205,79 @@ def run_query_stream(question: str):
         logger.error("Streaming query failed: %s", exc)
         payload = json.dumps({"type": "error", "value": str(exc)})
         yield f"data: {payload}\n\n"
+
+
+# ─────────────────────────────────────────────
+# Evaluation query
+# Used exclusively by the test pipeline.
+# Accepts temperature, top_p, top_k, and a
+# custom chroma_path so production is untouched.
+# ─────────────────────────────────────────────
+def run_query_for_eval(
+    question:    str,
+    top_k:       int   = 3,
+    temperature: float = 0.7,
+    top_p:       float = 0.9,
+    chroma_path: str   = "rag/chroma_test",
+) -> str:
+    """
+    Run a single query against the *test* ChromaDB using the given
+    generation parameters.  Returns the answer string.
+
+    Parameters
+    ----------
+    question    : The question to ask.
+    top_k       : Number of context chunks to retrieve.
+    temperature : LLM sampling temperature (0.0 = deterministic, 1.0 = creative).
+    top_p       : Nucleus sampling probability threshold.
+    chroma_path : Path to the test-only ChromaDB instance.
+    """
+    if not question or not question.strip():
+        return ""
+
+    # Build a fresh LLM with the requested generation parameters.
+    # top_p is passed via additional_kwargs for Google GenAI compatibility.
+    try:
+        llm = GoogleGenAI(
+            model="gemini-2.5-flash",
+            api_key=os.getenv("GEMINI_API_KEY"),
+            temperature=temperature,
+            additional_kwargs={"top_p": top_p},
+        )
+    except TypeError:
+        # Fallback: older llama-index versions may not accept additional_kwargs
+        llm = GoogleGenAI(
+            model="gemini-2.5-flash",
+            api_key=os.getenv("GEMINI_API_KEY"),
+            temperature=temperature,
+        )
+
+    index, chroma_collection = _build_index(
+        chroma_path=chroma_path,
+        collection_name="studentcompass_test",
+    )
+
+    if index is None:
+        logger.warning(
+            "run_query_for_eval: test Chroma at %s is empty.", chroma_path
+        )
+        return ""
+
+    query_engine = index.as_query_engine(
+        response_mode="compact",
+        text_qa_template=QA_PROMPT,
+        similarity_top_k=top_k,
+        llm=llm,
+        use_async=False,
+        streaming=False,
+    )
+
+    try:
+        response = query_engine.query(question)
+        return str(response).strip()
+    except Exception as exc:
+        logger.error("run_query_for_eval error: %s", exc)
+        return ""
 
 
 # ─────────────────────────────────────────────

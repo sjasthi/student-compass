@@ -2,11 +2,8 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
 /**
- * NavBar component provides a simple top navigation bar with links
- * to the chat home page and the admin upload page. It highlights
- * the active route based on the current location. This component
- * relies on react-router-dom's Link and useLocation hooks to
- * perform client-side navigation without full page reloads.
+ * NavBar provides top navigation with links to Chat, Admin, and Test.
+ * Highlights the active route based on the current location.
  */
 export default function NavBar() {
   const location = useLocation();
@@ -37,6 +34,18 @@ export default function NavBar() {
             }
           >
             Admin
+          </Link>
+        </li>
+        <li>
+          <Link
+            to="/test"
+            className={
+              isActive('/test')
+                ? 'font-semibold text-blue-300'
+                : 'hover:text-blue-300'
+            }
+          >
+            Test
           </Link>
         </li>
       </ul>

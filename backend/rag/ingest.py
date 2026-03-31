@@ -1,8 +1,10 @@
 # ingest.py
 # Ingest documents into ChromaDB from local files, URLs, or GCS.
-# Supports per-blob ingestion and full GCS ↔ Chroma sync.
+# Supports per-blob ingestion, full GCS ↔ Chroma sync,
+# and a GCS-based test ingestion path used by the evaluation pipeline.
 
 import os
+import shutil
 import tempfile
 import logging
 import threading
@@ -74,9 +76,9 @@ def get_embed_model() -> HuggingFaceEmbedding:
 # ─────────────────────────────────────────────
 # Chroma helpers
 # ─────────────────────────────────────────────
-def _get_chroma_collection():
-    client = PersistentClient(path=CHROMA_PATH)
-    return client.get_or_create_collection(CHROMA_COLLECTION)
+def _get_chroma_collection(chroma_path: str = CHROMA_PATH, collection: str = CHROMA_COLLECTION):
+    client = PersistentClient(path=chroma_path)
+    return client.get_or_create_collection(collection)
 
 
 def get_ingested_blob_names() -> set:
@@ -108,7 +110,7 @@ def remove_blob_from_chroma(blob_name: str) -> int:
 
 
 # ─────────────────────────────────────────────
-# Per-blob ingestion
+# Per-blob ingestion (production — GCS-sourced)
 # ─────────────────────────────────────────────
 def ingest_blob(
     blob_name:         str,
@@ -187,7 +189,6 @@ def ingest_blob(
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
         parser          = SentenceSplitter(chunk_size=1024, chunk_overlap=100)
 
-        # Re-use the singleton — no disk load on subsequent calls
         VectorStoreIndex.from_documents(
             documents,
             storage_context=storage_context,
@@ -200,6 +201,132 @@ def ingest_blob(
 
     logger.info("Ingested %d nodes for %s (blob: %s)", added, original_filename, blob_name)
     return added
+
+
+# ─────────────────────────────────────────────
+# GCS test ingestion (evaluation pipeline)
+# Downloads every active file from the GCS bucket
+# and ingests them into a separate test-only Chroma
+# path so the production index is never touched.
+# ─────────────────────────────────────────────
+def run_gcs_test_ingestion(
+    chunk_size:  int = 1024,
+    chroma_path: str = "chroma_test",
+) -> int:
+    """
+    Download all active blobs from GCS and ingest them into a
+    separate test ChromaDB using the given chunk size.
+
+    Parameters
+    ----------
+    chunk_size  : Sentence-splitter chunk size to evaluate.
+    chroma_path : Path for the test-only ChromaDB instance
+                  (kept separate from the production 'chroma' folder).
+
+    Returns
+    -------
+    Number of embeddings in the test collection after ingestion.
+    """
+    from google.cloud import storage as gcs_storage
+
+    storage_client = gcs_storage.Client()
+    bucket         = storage_client.bucket(GCS_BUCKET_NAME)
+
+    logger.info(
+        "GCS test ingestion — chunk_size=%d, chroma_path=%s, bucket=%s",
+        chunk_size, chroma_path, GCS_BUCKET_NAME,
+    )
+
+    # ── Collect all active blobs ─────────────────────────────────
+    active_blobs = []
+    for blob in bucket.list_blobs(prefix="uploads/"):
+        blob.reload()
+        meta = blob.metadata or {}
+        if meta.get("status", "active") == "inactive":
+            continue
+        active_blobs.append(blob)
+
+    if not active_blobs:
+        raise ValueError(
+            "No active files found in the GCS bucket. "
+            "Please upload documents via the Admin page before running a test."
+        )
+
+    logger.info("Found %d active blobs in GCS.", len(active_blobs))
+
+    # ── Download each blob into a temp dir and parse ──────────────
+    all_documents = []
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for blob in active_blobs:
+            meta              = blob.metadata or {}
+            original_filename = meta.get("original_filename", blob.name.split("/")[-1])
+            doc_type          = meta.get("doc_type", "general")
+            ext               = os.path.splitext(original_filename)[1].lower()
+
+            if ext not in SUPPORTED_EXTS:
+                logger.warning("Skipping unsupported file type: %s", original_filename)
+                continue
+
+            tmp_path = os.path.join(tmpdir, original_filename)
+            try:
+                blob.download_to_filename(tmp_path)
+            except Exception as exc:
+                logger.error("Failed to download %s: %s", blob.name, exc)
+                continue
+
+            try:
+                docs = SimpleDirectoryReader(
+                    input_files=[tmp_path],
+                ).load_data()
+            except Exception as exc:
+                logger.error("Failed to parse %s: %s", original_filename, exc)
+                continue
+
+            for doc in docs:
+                doc.metadata["blob_name"]         = blob.name
+                doc.metadata["original_filename"] = original_filename
+                doc.metadata["source_type"]       = "gcs"
+                doc.metadata["doc_type"]          = doc_type
+                # Flatten — Chroma requires scalar values only
+                doc.metadata = {
+                    k: v for k, v in doc.metadata.items()
+                    if isinstance(v, (str, int, float)) or v is None
+                }
+
+            all_documents.extend(docs)
+            logger.info("Parsed %d doc(s) from %s", len(docs), original_filename)
+
+    if not all_documents:
+        raise ValueError(
+            "No documents could be parsed from the GCS bucket files. "
+            "Check that supported file types (PDF, DOCX, TXT, MD) are uploaded."
+        )
+
+    logger.info("Total document objects ready for test ingestion: %d", len(all_documents))
+
+    # ── Build test ChromaDB ───────────────────────────────────────
+    chroma_client     = PersistentClient(path=chroma_path)
+    chroma_collection = chroma_client.get_or_create_collection("studentcompass_test")
+
+    vector_store    = ChromaVectorStore(chroma_collection=chroma_collection)
+    storage_context = StorageContext.from_defaults(vector_store=vector_store)
+    parser          = SentenceSplitter(chunk_size=chunk_size, chunk_overlap=100)
+
+    VectorStoreIndex.from_documents(
+        all_documents,
+        storage_context=storage_context,
+        embed_model=get_embed_model(),
+        transformations=[parser],
+        metadata_mode=MetadataMode.ALL,
+    )
+
+    count = chroma_collection.count()
+    logger.info(
+        "GCS test ingestion complete — chunk_size=%d → %d embeddings in %s",
+        chunk_size, count, chroma_path,
+    )
+    return count
 
 
 # ─────────────────────────────────────────────
@@ -357,4 +484,8 @@ def run_ingestion():
 
 
 if __name__ == "__main__":
-    run_ingestion()
+    import sys
+    if len(sys.argv) > 1:
+        run_gcs_test_ingestion(chunk_size=int(sys.argv[1]))
+    else:
+        run_ingestion()
