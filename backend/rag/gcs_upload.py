@@ -506,14 +506,21 @@ def run_evaluation():
         total_runs  = len(chunk_sizes) * len(top_k_values) * len(temperatures) * len(top_p_values)
         run_num     = 0
 
+        # Track all per-chunk chroma folders so we can clean up at the end
+        chroma_folders_created = []
+
         for chunk_size in chunk_sizes:
 
-            # ── Rebuild test Chroma with this chunk_size ─────────────────
+            # ── Use a unique subfolder per chunk_size ─────────────────────
+            # On Windows, ChromaDB holds the SQLite file open for the lifetime
+            # of the process, so shutil.rmtree() on the same folder fails with
+            # WinError 32. Using a fresh subfolder per run avoids this entirely.
+            chroma_path = f"{TEST_CHROMA_PATH}_{chunk_size}"
+            chroma_folders_created.append(chroma_path)
+
             yield _sse("progress", f"▶ Building vector store — chunk_size={chunk_size}…")
             try:
-                if os.path.exists(TEST_CHROMA_PATH):
-                    shutil.rmtree(TEST_CHROMA_PATH)
-                count = run_gcs_test_ingestion(chunk_size, TEST_CHROMA_PATH)
+                count = run_gcs_test_ingestion(chunk_size, chroma_path)
                 yield _sse("progress", f"  Vector store ready: {count} embeddings.")
             except ValueError as exc:
                 yield _sse("error", str(exc))
@@ -539,7 +546,7 @@ def run_evaluation():
                                     top_k=top_k,
                                     temperature=temperature,
                                     top_p=top_p,
-                                    chroma_path=TEST_CHROMA_PATH,
+                                    chroma_path=chroma_path,
                                 )
                                 score = _score_answer(item["gold_answer"], model_answer)
                             except Exception as exc:
@@ -566,8 +573,14 @@ def run_evaluation():
                         all_results.append(result)
                         yield _sse("result", result)
 
-        # ── All done ────────────────────────────────────────────────────
+        # ── All done — best-effort cleanup of test chroma folders ────────
         yield _sse("progress", "✅ Evaluation complete.")
+        for folder in chroma_folders_created:
+            try:
+                if os.path.exists(folder):
+                    shutil.rmtree(folder)
+            except Exception:
+                pass  # cleanup failure is non-fatal on Windows
         yield _sse("done", all_results)
 
     return Response(
