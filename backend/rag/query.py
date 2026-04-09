@@ -1,8 +1,10 @@
 # query.py
 # Load the ChromaDB vector store and answer questions.
-# run_query()          → returns a complete dict (used by non-streaming callers)
-# run_query_stream()   → generator that yields Server-Sent Event strings
-# run_query_for_eval() → evaluation helper that accepts temperature / top_p / chroma_path
+# run_query()                    → returns a complete dict (used by non-streaming callers)
+# run_query_stream()             → generator that yields Server-Sent Event strings
+# run_query_for_eval()           → RAG evaluation helper
+# run_keyword_search_for_eval()  → baseline: top-k chunk text, no LLM
+# run_prompt_only_for_eval()     → baseline: raw LLM with no retrieved context
 
 import sys
 import os
@@ -50,6 +52,14 @@ QA_PROMPT = PromptTemplate(
     "to answer that question.\n\n"
     "Context:\n{context_str}\n\n"
     "Student Question: {query_str}\n\n"
+    "Answer:"
+)
+
+# Prompt used by the prompt-only baseline — no context slot at all.
+PROMPT_ONLY_TEMPLATE = (
+    "You are a helpful student advisor for a university. "
+    "Answer the following question as accurately as possible using your general knowledge.\n\n"
+    "Student Question: {question}\n\n"
     "Answer:"
 )
 
@@ -208,7 +218,7 @@ def run_query_stream(question: str):
 
 
 # ─────────────────────────────────────────────
-# Evaluation query
+# RAG evaluation query
 # Used exclusively by the test pipeline.
 # Accepts temperature, top_p, top_k, and a
 # custom chroma_path so production is untouched.
@@ -221,8 +231,8 @@ def run_query_for_eval(
     chroma_path: str   = "rag/chroma_test",
 ) -> str:
     """
-    Run a single query against the *test* ChromaDB using the given
-    generation parameters.  Returns the answer string.
+    Run a single RAG query against the *test* ChromaDB using the given
+    generation parameters. Returns the answer string.
 
     Parameters
     ----------
@@ -235,8 +245,6 @@ def run_query_for_eval(
     if not question or not question.strip():
         return ""
 
-    # Build a fresh LLM with the requested generation parameters.
-    # top_p is passed via additional_kwargs for Google GenAI compatibility.
     try:
         llm = GoogleGenAI(
             model="gemini-2.5-flash",
@@ -245,7 +253,6 @@ def run_query_for_eval(
             additional_kwargs={"top_p": top_p},
         )
     except TypeError:
-        # Fallback: older llama-index versions may not accept additional_kwargs
         llm = GoogleGenAI(
             model="gemini-2.5-flash",
             api_key=os.getenv("GEMINI_API_KEY"),
@@ -277,6 +284,117 @@ def run_query_for_eval(
         return str(response).strip()
     except Exception as exc:
         logger.error("run_query_for_eval error: %s", exc)
+        return ""
+
+
+# ─────────────────────────────────────────────
+# Keyword search baseline
+# Retrieves top-k chunks via embedding similarity
+# and returns their raw text — no LLM involved.
+# Used by the test pipeline for baseline comparison.
+# ─────────────────────────────────────────────
+def run_keyword_search_for_eval(
+    question:    str,
+    top_k:       int = 3,
+    chroma_path: str = "rag/chroma_test",
+) -> str:
+    """
+    Retrieve the top-k most relevant chunks from ChromaDB and return
+    their concatenated text directly — no LLM generation step.
+
+    This is the keyword/retrieval-only baseline. The returned string
+    is passed through the same cosine-similarity scorer as the RAG
+    answers, so scores are directly comparable.
+
+    Parameters
+    ----------
+    question    : The question to find relevant chunks for.
+    top_k       : Number of chunks to retrieve and concatenate.
+    chroma_path : Path to the test-only ChromaDB instance.
+    """
+    if not question or not question.strip():
+        return ""
+
+    chroma_client     = PersistentClient(path=chroma_path)
+    chroma_collection = chroma_client.get_or_create_collection("studentcompass_test")
+
+    if chroma_collection.count() == 0:
+        logger.warning(
+            "run_keyword_search_for_eval: test Chroma at %s is empty.", chroma_path
+        )
+        return ""
+
+    embed_model = get_embed_model()
+
+    try:
+        query_embedding = embed_model.get_text_embedding(question)
+        results = chroma_collection.query(
+            query_embeddings=[query_embedding],
+            n_results=min(top_k, chroma_collection.count()),
+            include=["documents"],
+        )
+
+        chunks = results.get("documents", [[]])[0]
+        if not chunks:
+            return ""
+
+        # Join chunks with a separator so the scorer sees continuous text.
+        return " | ".join(chunk.strip() for chunk in chunks if chunk.strip())
+
+    except Exception as exc:
+        logger.error("run_keyword_search_for_eval error: %s", exc)
+        return ""
+
+
+# ─────────────────────────────────────────────
+# Prompt-only LLM baseline
+# Sends the question directly to Gemini with no
+# retrieved context. Tests what the LLM knows
+# from training data alone.
+# Used by the test pipeline for baseline comparison.
+# ─────────────────────────────────────────────
+def run_prompt_only_for_eval(
+    question:    str,
+    temperature: float = 0.7,
+    top_p:       float = 0.9,
+) -> str:
+    """
+    Ask Gemini the question directly, with no retrieved context.
+
+    Uses the same model and generation parameters as run_query_for_eval
+    so the comparison is fair — the only difference is the absence of
+    retrieved chunks in the prompt.
+
+    Parameters
+    ----------
+    question    : The question to ask.
+    temperature : LLM sampling temperature.
+    top_p       : Nucleus sampling probability threshold.
+    """
+    if not question or not question.strip():
+        return ""
+
+    try:
+        llm = GoogleGenAI(
+            model="gemini-2.5-flash",
+            api_key=os.getenv("GEMINI_API_KEY"),
+            temperature=temperature,
+            additional_kwargs={"top_p": top_p},
+        )
+    except TypeError:
+        llm = GoogleGenAI(
+            model="gemini-2.5-flash",
+            api_key=os.getenv("GEMINI_API_KEY"),
+            temperature=temperature,
+        )
+
+    prompt = PROMPT_ONLY_TEMPLATE.format(question=question.strip())
+
+    try:
+        response = llm.complete(prompt)
+        return str(response).strip()
+    except Exception as exc:
+        logger.error("run_prompt_only_for_eval error: %s", exc)
         return ""
 
 

@@ -1,8 +1,9 @@
-// src/pages/Test.jsx
+// Test.jsx
 // Admin evaluation page.
 // Lets the admin select parameter combinations (chunk_size, top_k,
-// temperature, top_p), runs the RAG accuracy test, streams live
-// progress, and displays a scored results table.
+// temperature, top_p) AND which evaluation modes to run (RAG,
+// keyword search, prompt-only). Streams live progress and displays
+// a scored results table with per-mode columns and a summary card.
 
 import { useState, useRef, useCallback } from "react";
 import Notification from "../components/Notification.jsx";
@@ -19,6 +20,30 @@ const PARAM_OPTIONS = {
 };
 
 const NUM_QUESTION_OPTIONS = [10, 20, 50];
+
+const MODE_OPTIONS = [
+  {
+    id:    "rag",
+    label: "RAG",
+    desc:  "Retrieve + generate",
+    color: "bg-blue-600 text-white border-blue-600",
+    badge: "bg-blue-100 text-blue-700",
+  },
+  {
+    id:    "keyword",
+    label: "Keyword search",
+    desc:  "Retrieval only, no LLM",
+    color: "bg-amber-500 text-white border-amber-500",
+    badge: "bg-amber-100 text-amber-800",
+  },
+  {
+    id:    "prompt_only",
+    label: "Prompt-only LLM",
+    desc:  "LLM only, no retrieval",
+    color: "bg-gray-600 text-white border-gray-600",
+    badge: "bg-gray-100 text-gray-700",
+  },
+];
 
 // Score thresholds for colour coding
 function accuracyColor(accuracy) {
@@ -76,9 +101,104 @@ function CheckGroup({ label, options, selected, onChange }) {
 }
 
 // ─────────────────────────────────────────────
+// Comparison summary card
+// ─────────────────────────────────────────────
+function ComparisonSummary({ results, activeModes }) {
+  // Compute average score and average latency per mode
+  const modeScores    = {};
+  const modeLatencies = {};
+  for (const mode of activeModes) {
+    const rows = results.filter((r) => r.mode === mode);
+    if (rows.length === 0) {
+      modeScores[mode]    = null;
+      modeLatencies[mode] = null;
+    } else {
+      modeScores[mode]    = rows.reduce((sum, r) => sum + r.accuracy, 0) / rows.length;
+      const lats          = rows.filter((r) => r.avg_latency_ms != null).map((r) => r.avg_latency_ms);
+      modeLatencies[mode] = lats.length ? Math.round(lats.reduce((a, b) => a + b, 0) / lats.length) : null;
+    }
+  }
+
+  const ranked = activeModes
+    .filter((m) => modeScores[m] !== null)
+    .sort((a, b) => modeScores[b] - modeScores[a]);
+
+  const winner = ranked[0];
+
+  const modeInfo = Object.fromEntries(MODE_OPTIONS.map((m) => [m.id, m]));
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+      <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+        <h3 className="text-sm font-semibold text-gray-700">Comparison summary</h3>
+        <p className="text-xs text-gray-400 mt-0.5">
+          Average score across all parameter configurations
+        </p>
+      </div>
+
+      <div className="p-4 grid grid-cols-3 gap-3">
+        {activeModes.map((mode) => {
+          const score = modeScores[mode];
+          const info  = modeInfo[mode];
+          const isWinner = mode === winner;
+          return (
+            <div
+              key={mode}
+              className={`rounded-lg border p-3 text-center ${
+                isWinner
+                  ? "border-green-300 bg-green-50"
+                  : "border-gray-200 bg-gray-50"
+              }`}
+            >
+              {isWinner && (
+                <div className="text-xs font-semibold text-green-700 mb-1">
+                  Winner 🏆
+                </div>
+              )}
+              <span
+                className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full mb-2 ${info.badge}`}
+              >
+                {info.label}
+              </span>
+              <div className="text-2xl font-bold {isWinner ? 'text-green-700' : 'text-gray-600'}">
+                {score !== null ? score.toFixed(2) : "—"}
+              </div>
+              <div className="text-xs text-gray-400 mt-0.5">avg / 3.00</div>
+              {modeLatencies[mode] != null && (
+                <div className="text-xs text-gray-500 mt-1">
+                  {modeLatencies[mode].toLocaleString()} ms avg
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {ranked.length >= 2 && (
+        <div className="px-4 pb-4 text-xs text-gray-500">
+          RAG outperforms the keyword baseline by{" "}
+          <span className="font-semibold text-gray-700">
+            {modeScores["rag"] !== null && modeScores["keyword"] !== null
+              ? (modeScores["rag"] - modeScores["keyword"]).toFixed(2)
+              : "—"}
+          </span>{" "}
+          points and the prompt-only baseline by{" "}
+          <span className="font-semibold text-gray-700">
+            {modeScores["rag"] !== null && modeScores["prompt_only"] !== null
+              ? (modeScores["rag"] - modeScores["prompt_only"]).toFixed(2)
+              : "—"}
+          </span>{" "}
+          points on average.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
 // Main page component
 // ─────────────────────────────────────────────
-export default function Test() {
+export default function TestWithComparison() {
   // Parameter selections
   const [chunkSizes,   setChunkSizes]   = useState([500]);
   const [topKValues,   setTopKValues]   = useState([3]);
@@ -86,36 +206,47 @@ export default function Test() {
   const [topPValues,   setTopPValues]   = useState([0.9]);
   const [numQuestions, setNumQuestions] = useState(50);
 
+  // Mode selection — all three on by default
+  const [activeModes, setActiveModes] = useState(["rag", "keyword", "prompt_only"]);
+
   // Run state
-  const [isRunning,     setIsRunning]     = useState(false);
-  const [log,           setLog]           = useState([]);
-  const [results,       setResults]       = useState([]);
-  const [notification,  setNotification]  = useState(null);
-  const abortRef = useRef(null);
+  const [isRunning,    setIsRunning]    = useState(false);
+  const [log,          setLog]          = useState([]);
+  const [results,      setResults]      = useState([]);
+  const [notification, setNotification] = useState(null);
+  const abortRef  = useRef(null);
   const logEndRef = useRef(null);
 
   // Computed: how many test runs will be executed
-  const totalRuns = chunkSizes.length * topKValues.length * temperatures.length * topPValues.length;
+  const paramCombos = chunkSizes.length * topKValues.length * temperatures.length * topPValues.length;
+  const totalRuns   = paramCombos * activeModes.length;
 
   const isValid =
     chunkSizes.length > 0 &&
     topKValues.length > 0 &&
     temperatures.length > 0 &&
-    topPValues.length > 0;
+    topPValues.length > 0 &&
+    activeModes.length > 0;
 
   const appendLog = useCallback((msg) => {
     setLog((prev) => [...prev, msg]);
-    // Auto-scroll the log panel
     setTimeout(() => logEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
   }, []);
+
+  const toggleMode = (modeId) => {
+    setActiveModes((prev) =>
+      prev.includes(modeId)
+        ? prev.filter((m) => m !== modeId)
+        : [...prev, modeId]
+    );
+  };
 
   const handleRun = async () => {
     if (!isValid || isRunning) return;
 
-    // Cancel any prior run
     if (abortRef.current) abortRef.current.abort();
-    const controller   = new AbortController();
-    abortRef.current   = controller;
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     setIsRunning(true);
     setLog([]);
@@ -130,6 +261,7 @@ export default function Test() {
           temperatures:  temperatures,
           top_p_values:  topPValues,
           num_questions: numQuestions,
+          modes:         activeModes,
         },
         (msg)    => appendLog(msg),
         (result) => setResults((prev) => [...prev, result]),
@@ -161,8 +293,20 @@ export default function Test() {
     }
   };
 
-  // Sort results: best accuracy first for easy reading
-  const sortedResults = [...results].sort((a, b) => b.accuracy - a.accuracy);
+  // Group results by param config key, then by mode within each group
+  const grouped = {};
+  for (const r of results) {
+    const key = `${r.chunk_size}-${r.top_k}-${r.temperature}-${r.top_p}`;
+    if (!grouped[key]) grouped[key] = { meta: r, byMode: {} };
+    grouped[key].byMode[r.mode] = r;
+  }
+  const groupedRows = Object.values(grouped).sort((a, b) => {
+    const bestA = Math.max(...Object.values(a.byMode).map((r) => r.accuracy));
+    const bestB = Math.max(...Object.values(b.byMode).map((r) => r.accuracy));
+    return bestB - bestA;
+  });
+
+  const modeInfo = Object.fromEntries(MODE_OPTIONS.map((m) => [m.id, m]));
 
   return (
     <div className="max-w-5xl mx-auto p-6 space-y-6">
@@ -171,8 +315,9 @@ export default function Test() {
       <div>
         <h2 className="text-2xl font-semibold text-gray-900">Evaluation Test</h2>
         <p className="text-sm text-gray-500 mt-1">
-          Run RAG accuracy tests against the gold question set. Choose which
-          parameter values to test — each combination counts as one experiment run.
+          Run accuracy tests across RAG, keyword search, and prompt-only modes.
+          Each parameter combination is tested in every selected mode so results
+          are directly comparable.
         </p>
       </div>
 
@@ -239,17 +384,49 @@ export default function Test() {
           </p>
         </div>
 
+        {/* ── Mode selector (new) ───────────────────────────────────── */}
+        <div>
+          <p className="text-sm font-medium text-gray-700 mb-2">Evaluation modes</p>
+          <div className="flex flex-wrap gap-3">
+            {MODE_OPTIONS.map((mode) => {
+              const active = activeModes.includes(mode.id);
+              return (
+                <button
+                  key={mode.id}
+                  type="button"
+                  onClick={() => toggleMode(mode.id)}
+                  className={`flex flex-col items-start px-4 py-2.5 rounded-lg border text-left transition-colors ${
+                    active
+                      ? mode.color
+                      : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
+                  }`}
+                >
+                  <span className="text-sm font-semibold">{mode.label}</span>
+                  <span className={`text-xs mt-0.5 ${active ? "opacity-80" : "text-gray-400"}`}>
+                    {mode.desc}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {activeModes.length === 0 && (
+            <p className="text-xs text-red-500 mt-1">Select at least one mode.</p>
+          )}
+        </div>
+
         {/* Run summary + action buttons */}
         <div className="flex items-center gap-4 pt-1">
           <div className="text-sm text-gray-500">
-            <span className="font-semibold text-gray-800">{totalRuns}</span> experiment
-            {totalRuns !== 1 ? "s" : ""} ×{" "}
+            <span className="font-semibold text-gray-800">{paramCombos}</span> config
+            {paramCombos !== 1 ? "s" : ""}{" "}×{" "}
+            <span className="font-semibold text-gray-800">{activeModes.length}</span> mode
+            {activeModes.length !== 1 ? "s" : ""}{" "}×{" "}
             <span className="font-semibold text-gray-800">{numQuestions}</span> questions
-            {" "}= up to{" "}
+            {" "}={" "}
             <span className="font-semibold text-gray-800">
               {(totalRuns * numQuestions).toLocaleString()}
             </span>{" "}
-            LLM calls
+            total evaluations
           </div>
 
           <div className="ml-auto flex gap-2">
@@ -288,7 +465,7 @@ export default function Test() {
         {" · "}
         <span className="text-red-700 font-medium">0 = Incorrect</span>
         <span className="ml-2 text-gray-400">
-          (based on cosine similarity to gold answers)
+          (cosine similarity vs gold answers — same scorer for all modes)
         </span>
       </div>
 
@@ -322,6 +499,10 @@ export default function Test() {
                     ? "text-green-400"
                     : line.startsWith("▶")
                     ? "text-yellow-300 font-semibold"
+                    : line.includes("[keyword]")
+                    ? "text-amber-300"
+                    : line.includes("[prompt_only]")
+                    ? "text-gray-400"
                     : "text-gray-300"
                 }
               >
@@ -333,14 +514,19 @@ export default function Test() {
         </div>
       )}
 
+      {/* ── Comparison Summary ────────────────────────────────────── */}
+      {results.length > 0 && !isRunning && activeModes.length > 1 && (
+        <ComparisonSummary results={results} activeModes={activeModes} />
+      )}
+
       {/* ── Results Table ─────────────────────────────────────────── */}
-      {results.length > 0 && (
+      {groupedRows.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
             <h3 className="text-sm font-semibold text-gray-700">
               Results
               <span className="ml-2 text-xs font-normal text-gray-400">
-                ({results.length} / {totalRuns} runs complete — sorted by accuracy)
+                ({groupedRows.length} config{groupedRows.length !== 1 ? "s" : ""} — sorted by best score)
               </span>
             </h3>
             <button
@@ -353,60 +539,96 @@ export default function Test() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="min-w-full text-sm divide-y divide-gray-100">
+            <table className="min-w-full text-sm divide-y divide-gray-100" style={{tableLayout:"fixed"}}>
               <thead className="bg-gray-50">
                 <tr>
-                  {[
-                    "Chunk Size",
-                    "Top-K",
-                    "Temperature",
-                    "Top-P",
-                    "Questions",
-                    "Avg Score",
-                    "Rating",
-                  ].map((h) => (
-                    <th
-                      key={h}
-                      className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide"
-                    >
-                      {h}
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-24">Chunk</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-16">Top-K</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-20">Temp</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-16">Top-P</th>
+                  {activeModes.map((mode) => (
+                    <th key={mode} className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide w-32">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${modeInfo[mode]?.badge}`}>
+                        {modeInfo[mode]?.label}
+                      </span>
+                    </th>
+                  ))}
+                  {activeModes.map((mode) => (
+                    <th key={`lat-${mode}`} className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-32">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${modeInfo[mode]?.badge}`}>
+                        {modeInfo[mode]?.label}
+                      </span>
+                      <span className="block text-gray-400 font-normal normal-case mt-0.5">avg ms</span>
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {sortedResults.map((r, i) => (
-                  <tr key={i} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-2.5 font-medium text-gray-800">{r.chunk_size}</td>
-                    <td className="px-4 py-2.5 text-gray-600">{r.top_k}</td>
-                    <td className="px-4 py-2.5 text-gray-600">{r.temperature}</td>
-                    <td className="px-4 py-2.5 text-gray-600">{r.top_p}</td>
-                    <td className="px-4 py-2.5 text-gray-600">{r.total_questions}</td>
-                    <td className="px-4 py-2.5">
-                      <span
-                        className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border ${accuracyColor(
-                          r.accuracy
-                        )}`}
-                      >
-                        {r.accuracy.toFixed(2)} / 3.00
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 text-xs font-medium text-gray-600">
-                      {accuracyLabel(r.accuracy)}
-                    </td>
-                  </tr>
-                ))}
+                {groupedRows.map((group, i) => {
+                  const { meta, byMode } = group;
+                  // Find best mode for this config row
+                  const bestScore = Math.max(
+                    ...activeModes
+                      .filter((m) => byMode[m])
+                      .map((m) => byMode[m].accuracy)
+                  );
+                  return (
+                    <tr key={i} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-2.5 font-medium text-gray-800">{meta.chunk_size}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{meta.top_k}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{meta.temperature}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{meta.top_p}</td>
+                      {activeModes.map((mode) => {
+                        const r = byMode[mode];
+                        if (!r) {
+                          return (
+                            <td key={mode} className="px-4 py-2.5 text-gray-300 text-xs">—</td>
+                          );
+                        }
+                        const isWinner = r.accuracy === bestScore && activeModes.length > 1;
+                        return (
+                          <td key={mode} className="px-4 py-2.5">
+                            <span
+                              className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border ${accuracyColor(r.accuracy)} ${isWinner ? "ring-2 ring-green-400 ring-offset-1" : ""}`}
+                            >
+                              {r.accuracy.toFixed(2)}
+                            </span>
+                          </td>
+                        );
+                      })}
+                      {activeModes.map((mode) => {
+                        const r = byMode[mode];
+                        if (!r || r.avg_latency_ms == null) {
+                          return <td key={`lat-${mode}`} className="px-4 py-2.5 text-gray-300 text-xs">—</td>;
+                        }
+                        return (
+                          <td key={`lat-${mode}`} className="px-4 py-2.5">
+                            <span className="text-xs text-gray-700 font-medium">
+                              {r.avg_latency_ms.toLocaleString()}
+                            </span>
+                            <span className="text-xs text-gray-400 ml-1">
+                              ({r.min_latency_ms}–{r.max_latency_ms})
+                            </span>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
 
-          {/* Best result callout */}
-          {!isRunning && sortedResults.length > 0 && (
+          {/* Best config callout */}
+          {!isRunning && groupedRows.length > 0 && (
             <div className="px-4 py-3 bg-green-50 border-t border-green-100 text-sm text-green-800">
-              <span className="font-semibold">Best configuration: </span>
-              chunk={sortedResults[0].chunk_size}, top_k={sortedResults[0].top_k},{" "}
-              temp={sortedResults[0].temperature}, top_p={sortedResults[0].top_p}{" "}
-              → <span className="font-semibold">{sortedResults[0].accuracy.toFixed(2)}</span> avg score
+              <span className="font-semibold">Best RAG configuration: </span>
+              {(() => {
+                const ragRows = results.filter((r) => r.mode === "rag");
+                if (!ragRows.length) return "No RAG results yet.";
+                const best = [...ragRows].sort((a, b) => b.accuracy - a.accuracy)[0];
+                return `chunk=${best.chunk_size}, top_k=${best.top_k}, temp=${best.temperature}, top_p=${best.top_p} → ${best.accuracy.toFixed(2)} avg score`;
+              })()}
             </div>
           )}
         </div>

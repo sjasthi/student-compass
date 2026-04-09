@@ -1,11 +1,13 @@
-// src/api/testService.js
+// testService.js
 // API calls for the evaluation test pipeline.
-// run_evaluation() uses SSE to stream progress and results in real time.
+// streamEvaluation() uses SSE to stream progress and results in real time.
+// Supports a `modes` parameter to run RAG, keyword search, and prompt-only
+// baselines in a single evaluation pass.
 
 const API_URL = import.meta.env.VITE_APP_API_URL || "http://localhost:5000";
 
 /**
- * Stream a RAG evaluation run via Server-Sent Events.
+ * Stream a baseline comparison evaluation run via Server-Sent Events.
  *
  * @param {object}   config
  * @param {number[]} config.chunk_sizes   - Chunk sizes to test
@@ -13,6 +15,7 @@ const API_URL = import.meta.env.VITE_APP_API_URL || "http://localhost:5000";
  * @param {number[]} config.temperatures  - Temperature values to test
  * @param {number[]} config.top_p_values  - Top-P values to test
  * @param {number}   config.num_questions - Number of gold questions to use
+ * @param {string[]} config.modes         - Modes to run: "rag" | "keyword" | "prompt_only"
  * @param {function} onProgress           - Called with (string) status messages
  * @param {function} onResult             - Called with each result object as it arrives
  * @param {AbortSignal} signal            - AbortController signal to cancel the stream
@@ -31,9 +34,9 @@ export async function streamEvaluation(config, onProgress, onResult, signal) {
     throw new Error(err.error || `Server error (${response.status})`);
   }
 
-  const reader  = response.body.getReader();
-  const decoder = new TextDecoder();
-  let   buffer  = "";
+  const reader     = response.body.getReader();
+  const decoder    = new TextDecoder();
+  let   buffer     = "";
   let   allResults = [];
 
   while (true) {
@@ -73,6 +76,8 @@ export async function streamEvaluation(config, onProgress, onResult, signal) {
 /**
  * Download test results as a CSV file.
  * Triggers a browser download dialog.
+ * Includes mode column so RAG, keyword, and prompt-only results are
+ * clearly labelled in the exported file.
  *
  * @param {Array} results - Array of result objects from the evaluation
  */
@@ -92,7 +97,7 @@ export async function downloadResultsCSV(results) {
   const url  = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href     = url;
-  link.download = "rag_test_results.csv";
+  link.download = "rag_comparison_results.csv";
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
