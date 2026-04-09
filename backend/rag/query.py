@@ -19,7 +19,7 @@ from llama_index.core.prompts import PromptTemplate
 
 # Import the singleton embed model from ingest so the model is
 # loaded exactly once across the entire process.
-from ingest import get_embed_model
+from backend.rag.ingest import get_embed_model
 
 load_dotenv()
 

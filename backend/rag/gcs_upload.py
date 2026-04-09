@@ -26,8 +26,17 @@ from google.cloud import storage
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
-from ingest import ingest_blob, remove_blob_from_chroma, sync_with_gcs, run_gcs_test_ingestion
-from query import run_query, run_query_stream, run_query_for_eval
+from backend.rag.ingest import (
+    ingest_blob,
+    remove_blob_from_chroma,
+    sync_with_gcs,
+    run_gcs_test_ingestion
+)
+from backend.rag.query import (
+    run_query,
+    run_query_stream,
+    run_query_for_eval
+)
 
 load_dotenv()
 
@@ -51,8 +60,9 @@ GOLD_QUESTIONS_PATH = os.environ.get("GOLD_QUESTIONS_PATH", "gold_questions.json
 # ─────────────────────────────────────────────
 # GCS Client
 # ─────────────────────────────────────────────
-storage_client = storage.Client()
-bucket         = storage_client.bucket(GCS_BUCKET_NAME)
+def get_bucket():
+    storage_client = storage.Client()
+    return storage_client.bucket(GCS_BUCKET_NAME)
 
 
 def allowed_file(filename: str) -> bool:
@@ -65,6 +75,7 @@ def generate_blob_name(filename: str) -> str:
 
 def delete_old_versions(original_filename: str):
     """Permanently delete older blobs with the same original filename."""
+    bucket = get_bucket()
     for blob in list(bucket.list_blobs(prefix="uploads/")):
         blob.reload()
         if (blob.metadata or {}).get("original_filename") == original_filename:
@@ -77,6 +88,7 @@ def delete_old_versions(original_filename: str):
 def _background_ingest(blob_name: str, original_filename: str, doc_type: str = "general"):
     try:
         logger.info("Background ingestion starting for %s", blob_name)
+        bucket = get_bucket()
         file_bytes = bucket.blob(blob_name).download_as_bytes()
         count      = ingest_blob(blob_name, file_bytes, original_filename, doc_type)
         logger.info("Background ingestion complete: %d nodes for %s", count, blob_name)
@@ -123,8 +135,13 @@ def upload_file():
             delete_old_versions(file.filename)
 
         blob_name = generate_blob_name(file.filename)
-        blob      = bucket.blob(blob_name)
-        blob.upload_from_file(file.stream, content_type=file.content_type or "application/octet-stream", rewind=True)
+        bucket = get_bucket()
+        blob = bucket.blob(blob_name)
+        blob.upload_from_file(
+            file.stream,
+            content_type=file.content_type or "application/octet-stream",
+            rewind=True,
+        )
         blob.metadata = {
             "original_filename": file.filename,
             "replace_old": str(replace_old),
@@ -205,6 +222,7 @@ def upload_from_url():
                 blob_name = generate_blob_name(filename)
                 if replace_old:
                     delete_old_versions(filename)
+                bucket = get_bucket()
                 blob = bucket.blob(blob_name)
                 blob.upload_from_string(extracted.encode("utf-8"), content_type="text/plain")
                 blob.metadata = {
@@ -247,8 +265,10 @@ def upload_from_url():
                 delete_old_versions(filename)
 
             blob_name = generate_blob_name(filename)
-            blob      = bucket.blob(blob_name)
+            bucket = get_bucket()
+            blob = bucket.blob(blob_name)
             blob.upload_from_file(resp.raw, content_type=content_type, rewind=False)
+
             blob.metadata = {
                 "original_filename": filename,
                 "replace_old": str(replace_old),
@@ -283,6 +303,7 @@ def upload_from_url():
 def list_files():
     try:
         file_list = []
+        bucket = get_bucket()
         for blob in bucket.list_blobs(prefix="uploads/"):
             blob.reload()
             meta   = blob.metadata or {}
@@ -312,6 +333,7 @@ def list_files():
 @app.route("/download-url/<path:blob_name>", methods=["GET"])
 def get_signed_url(blob_name):
     try:
+        bucket = get_bucket()
         signed_url = bucket.blob(blob_name).generate_signed_url(
             version="v4", expiration=timedelta(minutes=30), method="GET"
         )
@@ -326,6 +348,7 @@ def get_signed_url(blob_name):
 @app.route("/files/<path:blob_name>", methods=["DELETE"])
 def delete_file(blob_name):
     try:
+        bucket = get_bucket()
         bucket.blob(blob_name).delete()
         _trigger_background(_background_remove, blob_name)
         return jsonify({"message": "File deleted. Removing from index in background.", "blob_name": blob_name}), 200
