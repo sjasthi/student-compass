@@ -1,0 +1,30 @@
+# Environment variables
+.env
+backend/rag/.env
+
+# Google Cloud credentials
+service_account.json
+backend/rag/service_account.json
+
+# Python
+__pycache__/
+*.pyc
+
+# Virtual environment
+.venv/
+venv/
+
+# Node modules
+frontend/node_modules/
+node_modules/
+
+# Vite build cache
+frontend/.vite/
+
+# ChromaDB local folders
+backend/rag/chroma/
+chroma/
+
+# IDE
+.idea/
+.vscode/
