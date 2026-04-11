@@ -501,6 +501,28 @@ def run_evaluation():
         latency = round((time.perf_counter() - t_start) * 1000)
         return score, latency
 
+    def evaluate_question_all_topk(item, top_k_values, temperature, top_p, chroma_path):
+        """Runs all top_k values for a single question in parallel."""
+        results = []
+
+        with ThreadPoolExecutor(max_workers=len(top_k_values)) as executor:
+            futures = {
+                executor.submit(
+                    evaluate_single_question,
+                    item,
+                    top_k,
+                    temperature,
+                    top_p,
+                    chroma_path,
+                ): top_k
+                for top_k in top_k_values
+            }
+
+            for future in as_completed(futures):
+                results.append(future.result())
+
+        return results
+
     # ── SSE generator ───────────────────────────────────────────────────
     def generate():
 
@@ -535,7 +557,7 @@ def run_evaluation():
         # ════════════════════════════════════════════════════════════════════
         if "rag" in modes:
             yield _sse("progress", "▶ Starting RAG evaluation…")
-            total_rag = len(chunk_sizes) * len(top_k_values) * len(temperatures) * len(top_p_values)
+            total_rag = len(chunk_sizes) * len(temperatures) * len(top_p_values)
             run_num   = 0
 
             for chunk_size in chunk_sizes:
@@ -550,58 +572,64 @@ def run_evaluation():
                     yield _sse("error", f"Ingestion failed for chunk_size={chunk_size}: {exc}")
                     continue
 
-                for top_k in top_k_values:
-                    for temperature in temperatures:
-                        for top_p in top_p_values:
-                            run_num += 1
-                            label = f"[rag] chunk={chunk_size} top_k={top_k} temp={temperature} top_p={top_p} [{run_num}/{total_rag}]"
-                            yield _sse("progress", f"  Evaluating — {label}")
+                for temperature in temperatures:
+                    for top_p in top_p_values:
+                        run_num += 1
+                        label = f"[rag] chunk={chunk_size} temp={temperature} top_p={top_p} [{run_num}/{total_rag}]"
+                        yield _sse("progress", f"  Evaluating — {label}")
 
-                            # ── Parallel question evaluation ───────────────
-                            scores = []
-                            latencies = []
+                        scores = []
+                        latencies = []
 
-                            with ThreadPoolExecutor(max_workers=10) as executor:
-                                futures = [
-                                    executor.submit(
-                                        evaluate_single_question,
+                        # ── Outer executor: parallelize questions ───────────────
+                        with ThreadPoolExecutor(max_workers=10) as question_executor:
+                            question_futures = []
+
+                            for item in gold_questions:
+                                # Each question runs all top_k values in parallel
+                                question_futures.append(
+                                    question_executor.submit(
+                                        evaluate_question_all_topk,
                                         item,
-                                        top_k,
+                                        top_k_values,
                                         temperature,
                                         top_p,
                                         chroma_path,
                                     )
-                                    for item in gold_questions
-                                ]
+                                )
 
-                                for idx, future in enumerate(as_completed(futures), start=1):
-                                    score, latency = future.result()
+                            # Collect results as they finish
+                            for idx, future in enumerate(as_completed(question_futures), start=1):
+                                topk_results = future.result()
+
+                                # Aggregate across all top_k values
+                                for score, latency in topk_results:
                                     scores.append(score)
                                     latencies.append(latency)
 
-                                    if idx % 10 == 0 or idx == len(gold_questions):
-                                        yield _sse("progress", f"    {idx}/{len(gold_questions)} questions evaluated…")
+                                if idx % 10 == 0 or idx == len(gold_questions):
+                                    yield _sse("progress", f"    {idx}/{len(gold_questions)} questions evaluated…")
 
-                            # ── Aggregate results ──────────────────────────
-                            accuracy       = round(sum(scores) / len(scores), 2)
-                            avg_latency_ms = round(sum(latencies) / len(latencies))
-                            min_latency_ms = min(latencies)
-                            max_latency_ms = max(latencies)
+                        # ── Aggregate results ──────────────────────────────────
+                        accuracy       = round(sum(scores) / len(scores), 2)
+                        avg_latency_ms = round(sum(latencies) / len(latencies))
+                        min_latency_ms = min(latencies)
+                        max_latency_ms = max(latencies)
 
-                            result = {
-                                "mode":            "rag",
-                                "chunk_size":      chunk_size,
-                                "top_k":           top_k,
-                                "temperature":     temperature,
-                                "top_p":           top_p,
-                                "accuracy":        accuracy,
-                                "avg_latency_ms":  avg_latency_ms,
-                                "min_latency_ms":  min_latency_ms,
-                                "max_latency_ms":  max_latency_ms,
-                                "total_questions": len(scores),
-                            }
-                            all_results.append(result)
-                            yield _sse("result", result)
+                        result = {
+                            "mode":            "rag",
+                            "chunk_size":      chunk_size,
+                            "top_k_values":    top_k_values,
+                            "temperature":     temperature,
+                            "top_p":           top_p,
+                            "accuracy":        accuracy,
+                            "avg_latency_ms":  avg_latency_ms,
+                            "min_latency_ms":  min_latency_ms,
+                            "max_latency_ms":  max_latency_ms,
+                            "total_questions": len(gold_questions),
+                        }
+                        all_results.append(result)
+                        yield _sse("result", result)
 
         # ════════════════════════════════════════════════════════════════════
         # KEYWORD MODE
@@ -750,6 +778,7 @@ def run_evaluation():
             "X-Accel-Buffering": "no",
         },
     )
+
 
 # ─────────────────────────────────────────────
 # Route 11: Download test results as CSV
