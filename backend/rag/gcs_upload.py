@@ -36,6 +36,7 @@ from query import (
     run_prompt_only_for_eval,
 )
 
+
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
@@ -465,25 +466,9 @@ def run_evaluation():
     """
     Runs an accuracy evaluation over the gold questions file.
     Supports three modes: RAG, keyword search, and prompt-only LLM.
-    Each mode only iterates over the parameters that actually affect it,
-    avoiding redundant runs.
-
-    Request JSON:
-    {
-      "chunk_sizes":   [500, 1000],
-      "top_k_values":  [1, 3, 5],
-      "temperatures":  [0.2, 0.7],
-      "top_p_values":  [0.9, 0.95],
-      "num_questions": 50,
-      "modes":         ["rag", "keyword", "prompt_only"]
-    }
-
-    SSE event types:
-      progress — status text update (string)
-      result   — one completed experiment row (object, includes "mode" field)
-      done     — all experiments finished (array of all results)
-      error    — unrecoverable failure (string)
     """
+
+    # ── Parse config ───────────────────────────────────────────────────
     config        = request.get_json(force=True) or {}
     chunk_sizes   = config.get("chunk_sizes",   [500])
     top_k_values  = config.get("top_k_values",  [3])
@@ -491,19 +476,40 @@ def run_evaluation():
     top_p_values  = config.get("top_p_values",  [0.9])
     num_questions = min(int(config.get("num_questions", 50)), 50)
     requested_modes = config.get("modes", ["rag"])
-    # Filter out any unrecognised mode strings
     modes = [m for m in requested_modes if m in VALID_MODES]
     if not modes:
         modes = ["rag"]
 
+    # ── Parallel question evaluator ─────────────────────────────────────
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def evaluate_single_question(item, top_k, temperature, top_p, chroma_path):
+        t_start = time.perf_counter()
+        try:
+            answer = run_query_for_eval(
+                item["question"],
+                top_k=top_k,
+                temperature=temperature,
+                top_p=top_p,
+                chroma_path=chroma_path,
+            )
+            score = _score_answer(item["gold_answer"], answer)
+        except Exception as exc:
+            logger.warning("RAG question failed: %s", exc)
+            score = 0
+
+        latency = round((time.perf_counter() - t_start) * 1000)
+        return score, latency
+
+    # ── SSE generator ───────────────────────────────────────────────────
     def generate():
+
         # ── Load gold questions ──────────────────────────────────────────
         try:
             with open(GOLD_QUESTIONS_PATH, encoding="utf-8") as f:
                 gold_questions = json.load(f)["questions"][:num_questions]
         except FileNotFoundError:
-            yield _sse("error", f"gold_questions.json not found at '{GOLD_QUESTIONS_PATH}'. "
-                                 "Set GOLD_QUESTIONS_PATH in your .env.")
+            yield _sse("error", f"gold_questions.json not found at '{GOLD_QUESTIONS_PATH}'.")
             return
         except Exception as exc:
             yield _sse("error", f"Could not load gold_questions.json: {exc}")
@@ -512,7 +518,7 @@ def run_evaluation():
         yield _sse("progress", f"Loaded {len(gold_questions)} gold questions.")
         yield _sse("progress", f"Modes selected: {', '.join(modes)}")
 
-        # Pre-warm scoring model so the first question isn't slow
+        # ── Pre-warm scoring model ───────────────────────────────────────
         yield _sse("progress", "Loading scoring model…")
         try:
             _get_scoring_model()
@@ -524,8 +530,9 @@ def run_evaluation():
         all_results            = []
         chroma_folders_created = []
 
-        # ── RAG mode ────────────────────────────────────────────────────
-        # Iterates all four parameters: chunk_size, top_k, temperature, top_p
+        # ════════════════════════════════════════════════════════════════════
+        # RAG MODE
+        # ════════════════════════════════════════════════════════════════════
         if "rag" in modes:
             yield _sse("progress", "▶ Starting RAG evaluation…")
             total_rag = len(chunk_sizes) * len(top_k_values) * len(temperatures) * len(top_p_values)
@@ -539,9 +546,6 @@ def run_evaluation():
                 try:
                     count = run_gcs_test_ingestion(chunk_size, chroma_path)
                     yield _sse("progress", f"  Vector store ready: {count} embeddings.")
-                except ValueError as exc:
-                    yield _sse("error", str(exc))
-                    return
                 except Exception as exc:
                     yield _sse("error", f"Ingestion failed for chunk_size={chunk_size}: {exc}")
                     continue
@@ -550,37 +554,41 @@ def run_evaluation():
                     for temperature in temperatures:
                         for top_p in top_p_values:
                             run_num += 1
-                            label = (f"[rag] chunk={chunk_size} top_k={top_k} "
-                                     f"temp={temperature} top_p={top_p} "
-                                     f"[{run_num}/{total_rag}]")
+                            label = f"[rag] chunk={chunk_size} top_k={top_k} temp={temperature} top_p={top_p} [{run_num}/{total_rag}]"
                             yield _sse("progress", f"  Evaluating — {label}")
 
-                            scores    = []
+                            # ── Parallel question evaluation ───────────────
+                            scores = []
                             latencies = []
-                            for i, item in enumerate(gold_questions):
-                                t_start = time.perf_counter()
-                                try:
-                                    answer = run_query_for_eval(
-                                        item["question"],
-                                        top_k=top_k,
-                                        temperature=temperature,
-                                        top_p=top_p,
-                                        chroma_path=chroma_path,
-                                    )
-                                    score = _score_answer(item["gold_answer"], answer)
-                                except Exception as exc:
-                                    logger.warning("RAG Q%d failed: %s", i, exc)
-                                    score = 0
-                                latencies.append(round((time.perf_counter() - t_start) * 1000))
-                                scores.append(score)
-                                if (i + 1) % 10 == 0 or (i + 1) == len(gold_questions):
-                                    yield _sse("progress", f"    {i + 1}/{len(gold_questions)} questions evaluated…")
 
-                            accuracy        = round(sum(scores) / len(scores), 2) if scores else 0.0
-                            avg_latency_ms  = round(sum(latencies) / len(latencies)) if latencies else 0
-                            min_latency_ms  = min(latencies) if latencies else 0
-                            max_latency_ms  = max(latencies) if latencies else 0
-                            result   = {
+                            with ThreadPoolExecutor(max_workers=10) as executor:
+                                futures = [
+                                    executor.submit(
+                                        evaluate_single_question,
+                                        item,
+                                        top_k,
+                                        temperature,
+                                        top_p,
+                                        chroma_path,
+                                    )
+                                    for item in gold_questions
+                                ]
+
+                                for idx, future in enumerate(as_completed(futures), start=1):
+                                    score, latency = future.result()
+                                    scores.append(score)
+                                    latencies.append(latency)
+
+                                    if idx % 10 == 0 or idx == len(gold_questions):
+                                        yield _sse("progress", f"    {idx}/{len(gold_questions)} questions evaluated…")
+
+                            # ── Aggregate results ──────────────────────────
+                            accuracy       = round(sum(scores) / len(scores), 2)
+                            avg_latency_ms = round(sum(latencies) / len(latencies))
+                            min_latency_ms = min(latencies)
+                            max_latency_ms = max(latencies)
+
+                            result = {
                                 "mode":            "rag",
                                 "chunk_size":      chunk_size,
                                 "top_k":           top_k,
@@ -595,8 +603,9 @@ def run_evaluation():
                             all_results.append(result)
                             yield _sse("result", result)
 
-        # ── Keyword search baseline ──────────────────────────────────────
-        # Only iterates chunk_size and top_k — temperature/top_p are irrelevant
+        # ════════════════════════════════════════════════════════════════════
+        # KEYWORD MODE
+        # ════════════════════════════════════════════════════════════════════
         if "keyword" in modes:
             yield _sse("progress", "▶ Starting keyword search evaluation…")
             total_kw = len(chunk_sizes) * len(top_k_values)
@@ -604,8 +613,7 @@ def run_evaluation():
 
             for chunk_size in chunk_sizes:
                 chroma_path = f"{TEST_CHROMA_PATH}_{chunk_size}"
-                # Reuse the vector store built during RAG if it exists,
-                # otherwise build it now
+
                 if chroma_path not in chroma_folders_created:
                     chroma_folders_created.append(chroma_path)
                     yield _sse("progress", f"  Building vector store — chunk_size={chunk_size}…")
@@ -621,8 +629,10 @@ def run_evaluation():
                     label = f"[keyword] chunk={chunk_size} top_k={top_k} [{run_num}/{total_kw}]"
                     yield _sse("progress", f"  Evaluating — {label}")
 
-                    scores    = []
+                    scores = []
                     latencies = []
+
+                    # Sequential is fine here (keyword search is fast)
                     for i, item in enumerate(gold_questions):
                         t_start = time.perf_counter()
                         try:
@@ -635,16 +645,19 @@ def run_evaluation():
                         except Exception as exc:
                             logger.warning("Keyword Q%d failed: %s", i, exc)
                             score = 0
+
                         latencies.append(round((time.perf_counter() - t_start) * 1000))
                         scores.append(score)
+
                         if (i + 1) % 10 == 0 or (i + 1) == len(gold_questions):
                             yield _sse("progress", f"    {i + 1}/{len(gold_questions)} questions evaluated…")
 
-                    accuracy       = round(sum(scores) / len(scores), 2) if scores else 0.0
-                    avg_latency_ms = round(sum(latencies) / len(latencies)) if latencies else 0
-                    min_latency_ms = min(latencies) if latencies else 0
-                    max_latency_ms = max(latencies) if latencies else 0
-                    result   = {
+                    accuracy       = round(sum(scores) / len(scores), 2)
+                    avg_latency_ms = round(sum(latencies) / len(latencies))
+                    min_latency_ms = min(latencies)
+                    max_latency_ms = max(latencies)
+
+                    result = {
                         "mode":            "keyword",
                         "chunk_size":      chunk_size,
                         "top_k":           top_k,
@@ -659,8 +672,9 @@ def run_evaluation():
                     all_results.append(result)
                     yield _sse("result", result)
 
-        # ── Prompt-only LLM baseline ─────────────────────────────────────
-        # Only iterates temperature and top_p — chunk_size/top_k are irrelevant
+        # ════════════════════════════════════════════════════════════════════
+        # PROMPT-ONLY MODE
+        # ════════════════════════════════════════════════════════════════════
         if "prompt_only" in modes:
             yield _sse("progress", "▶ Starting prompt-only evaluation…")
             total_po = len(temperatures) * len(top_p_values)
@@ -672,8 +686,9 @@ def run_evaluation():
                     label = f"[prompt_only] temp={temperature} top_p={top_p} [{run_num}/{total_po}]"
                     yield _sse("progress", f"  Evaluating — {label}")
 
-                    scores    = []
+                    scores = []
                     latencies = []
+
                     for i, item in enumerate(gold_questions):
                         t_start = time.perf_counter()
                         try:
@@ -686,16 +701,19 @@ def run_evaluation():
                         except Exception as exc:
                             logger.warning("Prompt-only Q%d failed: %s", i, exc)
                             score = 0
+
                         latencies.append(round((time.perf_counter() - t_start) * 1000))
                         scores.append(score)
+
                         if (i + 1) % 10 == 0 or (i + 1) == len(gold_questions):
                             yield _sse("progress", f"    {i + 1}/{len(gold_questions)} questions evaluated…")
 
-                    accuracy       = round(sum(scores) / len(scores), 2) if scores else 0.0
-                    avg_latency_ms = round(sum(latencies) / len(latencies)) if latencies else 0
-                    min_latency_ms = min(latencies) if latencies else 0
-                    max_latency_ms = max(latencies) if latencies else 0
-                    result   = {
+                    accuracy       = round(sum(scores) / len(scores), 2)
+                    avg_latency_ms = round(sum(latencies) / len(latencies))
+                    min_latency_ms = min(latencies)
+                    max_latency_ms = max(latencies)
+
+                    result = {
                         "mode":            "prompt_only",
                         "chunk_size":      None,
                         "top_k":           None,
@@ -710,16 +728,20 @@ def run_evaluation():
                     all_results.append(result)
                     yield _sse("result", result)
 
-        # ── Cleanup test chroma folders ──────────────────────────────────
+        # ════════════════════════════════════════════════════════════════════
+        # CLEANUP
+        # ════════════════════════════════════════════════════════════════════
         yield _sse("progress", "✅ Evaluation complete.")
         for folder in chroma_folders_created:
             try:
                 if os.path.exists(folder):
                     shutil.rmtree(folder)
             except Exception:
-                pass  # non-fatal on Windows
+                pass
+
         yield _sse("done", all_results)
 
+    # ── Return SSE stream ────────────────────────────────────────────────
     return Response(
         stream_with_context(generate()),
         mimetype="text/event-stream",
@@ -728,7 +750,6 @@ def run_evaluation():
             "X-Accel-Buffering": "no",
         },
     )
-
 
 # ─────────────────────────────────────────────
 # Route 11: Download test results as CSV
