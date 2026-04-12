@@ -43,17 +43,49 @@ Settings.llm = GoogleGenAI(
 )
 
 # ─────────────────────────────────────────────
-# Prompt template
+# Prompt template builder
+# Sliding window: keeps the last 3 conversation
+# turns so the prompt stays small regardless of
+# how long the conversation grows.
 # ─────────────────────────────────────────────
-QA_PROMPT = PromptTemplate(
-    "You are a helpful student advisor for a university. "
-    "Answer the student's question using ONLY the context provided below. "
-    "If the answer is not in the context, say you don't have enough information "
-    "to answer that question.\n\n"
-    "Context:\n{context_str}\n\n"
-    "Student Question: {query_str}\n\n"
-    "Answer:"
-)
+HISTORY_WINDOW = 3   # max prior turns sent to Gemini
+
+def _build_qa_template(history: list | None = None) -> PromptTemplate:
+    """
+    Build a QA PromptTemplate, optionally prepending the last
+    HISTORY_WINDOW turns of conversation so Gemini can resolve
+    follow-up references (e.g. "what about spring?").
+
+    Parameters
+    ----------
+    history : list of { "question": str, "answer": str }
+              Full history from the frontend — trimmed here to
+              the last HISTORY_WINDOW turns before use.
+    """
+    trimmed = (history or [])[-HISTORY_WINDOW:]
+
+    if trimmed:
+        lines = []
+        for turn in trimmed:
+            lines.append(f"Student: {turn.get('question', '')}")
+            lines.append(f"Advisor: {turn.get('answer', '')}")
+        history_block = "Previous conversation:\n" + "\n".join(lines) + "\n\n"
+    else:
+        history_block = ""
+
+    return PromptTemplate(
+        "You are a helpful student advisor for a university. "
+        "Answer the student's question using ONLY the context provided below. "
+        "If the answer is not in the context, say you don't have enough information "
+        "to answer that question.\n\n"
+        + history_block
+        + "Context:\n{context_str}\n\n"
+        "Student Question: {query_str}\n\n"
+        "Answer:"
+    )
+
+# Keep a static version for the evaluation helpers that don't use history.
+QA_PROMPT = _build_qa_template()
 
 # Prompt used by the prompt-only baseline — no context slot at all.
 PROMPT_ONLY_TEMPLATE = (
@@ -118,9 +150,15 @@ def _build_sources(response) -> list:
 # ─────────────────────────────────────────────
 # Non-streaming query (used by CLI / sync callers)
 # ─────────────────────────────────────────────
-def run_query(question: str) -> dict:
+def run_query(question: str, history=None) -> dict:
     """
     Query ChromaDB and return a complete structured response.
+
+    Parameters
+    ----------
+    question : The student's current question.
+    history  : Optional list of prior { "question", "answer" } turns.
+               Trimmed to the last HISTORY_WINDOW turns before use.
 
     Returns
     -------
@@ -142,7 +180,7 @@ def run_query(question: str) -> dict:
 
     query_engine = index.as_query_engine(
         response_mode="compact",
-        text_qa_template=QA_PROMPT,
+        text_qa_template=_build_qa_template(history),
         similarity_top_k=5,
         use_async=False,
         streaming=False,
@@ -159,10 +197,16 @@ def run_query(question: str) -> dict:
 # ─────────────────────────────────────────────
 # Streaming query — yields Server-Sent Events
 # ─────────────────────────────────────────────
-def run_query_stream(question: str):
+def run_query_stream(question: str, history=None):
     """
     Generator that streams the LLM answer token-by-token as Server-Sent Events,
     then emits a final 'sources' event.
+
+    Parameters
+    ----------
+    question : The student's current question.
+    history  : Optional list of prior { "question", "answer" } turns.
+               Trimmed to the last HISTORY_WINDOW turns before use.
 
     SSE format
     ----------
@@ -172,7 +216,7 @@ def run_query_stream(question: str):
 
     Usage in Flask
     --------------
-    return Response(run_query_stream(question), mimetype="text/event-stream")
+    return Response(run_query_stream(question, history), mimetype="text/event-stream")
     """
     if not question or not question.strip():
         yield f"data: {json.dumps({'type': 'error', 'value': 'Please provide a question.'})}\n\n"
@@ -189,7 +233,7 @@ def run_query_stream(question: str):
     # Build a streaming query engine
     query_engine = index.as_query_engine(
         response_mode="compact",
-        text_qa_template=QA_PROMPT,
+        text_qa_template=_build_qa_template(history),
         similarity_top_k=5,
         use_async=False,
         streaming=True,        # ← key difference
