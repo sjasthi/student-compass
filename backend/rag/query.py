@@ -144,7 +144,7 @@ def _build_sources(response) -> list:
             "blob_name": meta.get("blob_name"),
         })
 
-    return sources
+    return sources[:1]
 
 
 # ─────────────────────────────────────────────

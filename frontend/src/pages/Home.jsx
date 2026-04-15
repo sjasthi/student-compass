@@ -38,89 +38,95 @@ function Home() {
   };
 
   const handleAsk = async () => {
-    const trimmed = question.trim();
-    if (!trimmed || loading) return;
+  const trimmed = question.trim();
+  if (!trimmed || loading) return;
 
-    if (abortRef.current) abortRef.current.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
+  if (abortRef.current) abortRef.current.abort();
+  const controller = new AbortController();
+  abortRef.current = controller;
 
-    setLoading(true);
-    setError('');
-    setLiveAnswer('');
-    setLiveSources([]);
-    setQuestion('');
+  setLoading(true);
+  setError('');
+  setLiveAnswer('');
+  setLiveSources([]);
+  setQuestion('');
 
-    // Sliding window: send only the last HISTORY_WINDOW completed turns
-    const windowedHistory = history.slice(-HISTORY_WINDOW).map(({ question, answer }) => ({
-      question,
-      answer,
-    }));
+  // Sliding window: send only the last HISTORY_WINDOW completed turns
+  const windowedHistory = history.slice(-HISTORY_WINDOW).map(({ question, answer }) => ({
+    question,
+    answer,
+  }));
 
-    let fullAnswer = '';
+  // Local variables that update immediately (React state is async)
+  let fullAnswer = '';
+  let finalSources = [];
 
-    try {
-      const response = await fetch(`${API_BASE}/query/stream`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ question: trimmed, history: windowedHistory }),
-        signal:  controller.signal,
-      });
+  try {
+    const response = await fetch(`${API_BASE}/query/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: trimmed, history: windowedHistory }),
+      signal: controller.signal,
+    });
 
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error || `Server error (${response.status})`);
-      }
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `Server error (${response.status})`);
+    }
 
-      const reader  = response.body.getReader();
-      const decoder = new TextDecoder();
-      let   buffer  = '';
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop();
 
-        const parts = buffer.split('\n\n');
-        buffer      = parts.pop();
+      for (const part of parts) {
+        const line = part.trim();
+        if (!line.startsWith('data:')) continue;
 
-        for (const part of parts) {
-          const line = part.trim();
-          if (!line.startsWith('data:')) continue;
+        let event;
+        try {
+          event = JSON.parse(line.slice(5).trim());
+        } catch {
+          continue;
+        }
 
-          let event;
-          try { event = JSON.parse(line.slice(5).trim()); }
-          catch { continue; }
-
-          if (event.type === 'token') {
-            fullAnswer += event.value;
-            setLiveAnswer(prev => prev + event.value);
-          } else if (event.type === 'sources') {
-            setLiveSources(event.value || []);
-          } else if (event.type === 'error') {
-            throw new Error(event.value);
-          }
+        if (event.type === 'token') {
+          fullAnswer += event.value;
+          setLiveAnswer(prev => prev + event.value);
+        } else if (event.type === 'sources') {
+          finalSources = event.value || [];
+          setLiveSources(event.value || []);
+        } else if (event.type === 'error') {
+          throw new Error(event.value);
         }
       }
-
-      // Commit the completed turn to history
-      setHistory(prev => [
-        ...prev,
-        { question: trimmed, answer: fullAnswer, sources: liveSources },
-      ]);
-      setLiveAnswer('');
-      setLiveSources([]);
-
-    } catch (err) {
-      if (err.name === 'AbortError') return;
-      console.error('Stream error:', err);
-      setError(err.message || 'An error occurred. Please try again.');
-    } finally {
-      setLoading(false);
-      abortRef.current = null;
     }
-  };
+
+    // Commit the completed turn to history
+    setHistory(prev => [
+      ...prev,
+      { question: trimmed, answer: fullAnswer, sources: finalSources },
+    ]);
+
+    setLiveAnswer('');
+    setLiveSources([]);
+
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    console.error('Stream error:', err);
+    setError(err.message || 'An error occurred. Please try again.');
+  } finally {
+    setLoading(false);
+    abortRef.current = null;
+  }
+};
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
