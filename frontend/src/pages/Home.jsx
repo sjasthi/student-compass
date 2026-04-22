@@ -18,6 +18,7 @@ function Home() {
   const [liveAnswer, setLiveAnswer] = useState('');
   const [liveSources, setLiveSources] = useState([]);
   const [loading,   setLoading]   = useState(false);
+  const [retryMsg,  setRetryMsg]  = useState('');   // shown during Gemini 503 retries
   const [error,     setError]     = useState('');
 
   const abortRef   = useRef(null);
@@ -33,6 +34,7 @@ function Home() {
     setHistory([]);
     setLiveAnswer('');
     setLiveSources([]);
+    setRetryMsg('');
     setError('');
     setQuestion('');
   };
@@ -47,6 +49,7 @@ function Home() {
 
   setLoading(true);
   setError('');
+  setRetryMsg('');
   setLiveAnswer('');
   setLiveSources([]);
   setQuestion('');
@@ -99,7 +102,10 @@ function Home() {
 
         if (event.type === 'token') {
           fullAnswer += event.value;
+          setRetryMsg('');   // clear any retry notice once tokens flow
           setLiveAnswer(prev => prev + event.value);
+        } else if (event.type === 'retrying') {
+          setRetryMsg(`Gemini is busy — retrying (attempt ${event.attempt}/3)…`);
         } else if (event.type === 'sources') {
           finalSources = event.value || [];
           setLiveSources(event.value || []);
@@ -117,6 +123,7 @@ function Home() {
 
     setLiveAnswer('');
     setLiveSources([]);
+    setRetryMsg('');
 
   } catch (err) {
     if (err.name === 'AbortError') return;
@@ -124,6 +131,7 @@ function Home() {
     setError(err.message || 'An error occurred. Please try again.');
   } finally {
     setLoading(false);
+    setRetryMsg('');
     abortRef.current = null;
   }
 };
@@ -192,7 +200,9 @@ function Home() {
                     stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                 </svg>
-                <span className="text-sm">Searching the knowledge base…</span>
+                <span className="text-sm">
+                  {retryMsg || 'Searching the knowledge base…'}
+                </span>
               </div>
             )}
 

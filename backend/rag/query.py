@@ -1,15 +1,25 @@
 # query.py
 # Load the ChromaDB vector store and answer questions.
-# run_query()                    → returns a complete dict (used by non-streaming callers)
-# run_query_stream()             → generator that yields Server-Sent Event strings
-# run_query_for_eval()           → RAG evaluation helper
-# run_keyword_search_for_eval()  → baseline: top-k chunk text, no LLM
-# run_prompt_only_for_eval()     → baseline: raw LLM with no retrieved context
+# run_query()                         → returns a complete dict (used by non-streaming callers)
+# run_query_stream()                  → generator that yields Server-Sent Event strings
+# run_query_for_eval()                → RAG evaluation helper (answer string only)
+# run_query_for_eval_with_context()   → RAG evaluation helper (answer + retrieved chunks for RAGAS)
+# run_keyword_search_for_eval()       → baseline: top-k chunk text, no LLM
+# run_prompt_only_for_eval()          → baseline: raw LLM with no retrieved context
 
 import sys
 import os
 import json
 import logging
+import time
+
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception,
+    RetryError,
+)
 
 from chromadb import PersistentClient
 from dotenv import load_dotenv
@@ -29,10 +39,46 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────
+# Retry configuration (tenacity)
+# Catches Gemini 503 / UNAVAILABLE errors and
+# retries with exponential backoff before giving up.
+# ─────────────────────────────────────────────
+def _is_gemini_503(exc: BaseException) -> bool:
+    """Return True if the exception looks like a Gemini 503 / UNAVAILABLE."""
+    msg = str(exc)
+    return "503" in msg or "UNAVAILABLE" in msg
+
+_RETRY_POLICY = dict(
+    retry=retry_if_exception(_is_gemini_503),
+    wait=wait_exponential(multiplier=1, min=2, max=30),  # 2s → 4s → 8s → 16s → 30s
+    stop=stop_after_attempt(4),
+    reraise=True,
+)
+
+@retry(**_RETRY_POLICY)
+def _call_query_engine(query_engine, question: str):
+    """Thin wrapper so tenacity can retry the single blocking call."""
+    return query_engine.query(question)
+
+@retry(**_RETRY_POLICY)
+def _call_llm_complete(llm, prompt: str):
+    """Thin wrapper so tenacity can retry direct LLM completions."""
+    return llm.complete(prompt)
+
+# ─────────────────────────────────────────────
 # Configuration
 # ─────────────────────────────────────────────
 CHROMA_PATH       = os.environ.get("CHROMA_PATH", "chroma")
 CHROMA_COLLECTION = "studentcompass"
+
+# ─────────────────────────────────────────────
+# Best Optuna parameters
+# Source: 10 trials, 20 questions
+#   faithfulness=1.000  answer_relevancy=0.746  mean=0.873
+# ─────────────────────────────────────────────
+BEST_TOP_K      = 3
+BEST_TEMPERATURE = 0.74
+BEST_TOP_P       = 0.92
 
 # ─────────────────────────────────────────────
 # LLM setup
@@ -40,6 +86,8 @@ CHROMA_COLLECTION = "studentcompass"
 Settings.llm = GoogleGenAI(
     model="gemini-2.5-flash",
     api_key=os.getenv("GEMINI_API_KEY"),
+    temperature=BEST_TEMPERATURE,
+    additional_kwargs={"top_p": BEST_TOP_P},
 )
 
 # ─────────────────────────────────────────────
@@ -181,12 +229,19 @@ def run_query(question: str, history=None) -> dict:
     query_engine = index.as_query_engine(
         response_mode="compact",
         text_qa_template=_build_qa_template(history),
-        similarity_top_k=5,
+        similarity_top_k=BEST_TOP_K,
         use_async=False,
         streaming=False,
     )
 
-    response = query_engine.query(question)
+    try:
+        response = _call_query_engine(query_engine, question)
+    except RetryError as exc:
+        logger.error("run_query: Gemini still unavailable after retries: %s", exc)
+        return {
+            "answer":  "Gemini is temporarily unavailable. Please try again in a moment.",
+            "sources": [],
+        }
 
     return {
         "answer":  str(response).strip(),
@@ -234,31 +289,46 @@ def run_query_stream(question: str, history=None):
     query_engine = index.as_query_engine(
         response_mode="compact",
         text_qa_template=_build_qa_template(history),
-        similarity_top_k=5,
+        similarity_top_k=BEST_TOP_K,
         use_async=False,
         streaming=True,        # ← key difference
     )
 
-    try:
-        streaming_response = query_engine.query(question)
+    _STREAM_DELAYS = [2, 5, 15]   # seconds between retries (3 attempts total)
 
-        # Stream answer tokens as they arrive from Gemini
-        for token in streaming_response.response_gen:
-            payload = json.dumps({"type": "token", "value": token})
+    for attempt, delay in enumerate(_STREAM_DELAYS + [None]):
+        try:
+            streaming_response = query_engine.query(question)
+
+            # Stream answer tokens as they arrive from Gemini
+            for token in streaming_response.response_gen:
+                payload = json.dumps({"type": "token", "value": token})
+                yield f"data: {payload}\n\n"
+
+            # After the full answer, emit sources
+            sources  = _build_sources(streaming_response)
+            payload  = json.dumps({"type": "sources", "value": sources})
             yield f"data: {payload}\n\n"
 
-        # After the full answer, emit sources
-        sources  = _build_sources(streaming_response)
-        payload  = json.dumps({"type": "sources", "value": sources})
-        yield f"data: {payload}\n\n"
+            # Signal completion
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            return   # success — exit retry loop
 
-        # Signal completion
-        yield f"data: {json.dumps({'type': 'done'})}\n\n"
-
-    except Exception as exc:
-        logger.error("Streaming query failed: %s", exc)
-        payload = json.dumps({"type": "error", "value": str(exc)})
-        yield f"data: {payload}\n\n"
+        except Exception as exc:
+            if _is_gemini_503(exc) and delay is not None:
+                logger.warning(
+                    "run_query_stream: Gemini 503 on attempt %d, retrying in %ds…",
+                    attempt + 1, delay,
+                )
+                yield (
+                    f"data: {json.dumps({'type': 'retrying', 'attempt': attempt + 1, 'wait': delay})}\n\n"
+                )
+                time.sleep(delay)
+            else:
+                logger.error("Streaming query failed: %s", exc)
+                payload = json.dumps({"type": "error", "value": str(exc)})
+                yield f"data: {payload}\n\n"
+                return
 
 
 # ─────────────────────────────────────────────
@@ -324,11 +394,98 @@ def run_query_for_eval(
     )
 
     try:
-        response = query_engine.query(question)
+        response = _call_query_engine(query_engine, question)
         return str(response).strip()
     except Exception as exc:
         logger.error("run_query_for_eval error: %s", exc)
         return ""
+
+
+
+# ─────────────────────────────────────────────
+# RAG evaluation query — with context (for RAGAS)
+# Like run_query_for_eval but also returns the
+# retrieved chunk texts so RAGAS can score
+# faithfulness and context precision/recall.
+# ─────────────────────────────────────────────
+def run_query_for_eval_with_context(
+    question:    str,
+    top_k:       int   = 3,
+    temperature: float = 0.7,
+    top_p:       float = 0.9,
+    chroma_path: str   = "rag/chroma_test",
+) -> dict:
+    """
+    Run a single RAG query and return both the generated answer and the
+    raw text of every retrieved chunk.
+
+    Parameters
+    ----------
+    question    : The question to ask.
+    top_k       : Number of context chunks to retrieve.
+    temperature : LLM sampling temperature.
+    top_p       : Nucleus sampling probability threshold.
+    chroma_path : Path to the test-only ChromaDB instance.
+
+    Returns
+    -------
+    {
+        "answer":   str,           # generated answer
+        "contexts": [str, …],      # raw text of each retrieved chunk
+    }
+    Both keys are present even on failure (empty string / empty list).
+    """
+    if not question or not question.strip():
+        return {"answer": "", "contexts": []}
+
+    try:
+        llm = GoogleGenAI(
+            model="gemini-2.5-flash",
+            api_key=os.getenv("GEMINI_API_KEY"),
+            temperature=temperature,
+            additional_kwargs={"top_p": top_p},
+        )
+    except TypeError:
+        llm = GoogleGenAI(
+            model="gemini-2.5-flash",
+            api_key=os.getenv("GEMINI_API_KEY"),
+            temperature=temperature,
+        )
+
+    index, _ = _build_index(
+        chroma_path=chroma_path,
+        collection_name="studentcompass_test",
+    )
+
+    if index is None:
+        logger.warning(
+            "run_query_for_eval_with_context: test Chroma at %s is empty.", chroma_path
+        )
+        return {"answer": "", "contexts": []}
+
+    query_engine = index.as_query_engine(
+        response_mode="compact",
+        text_qa_template=QA_PROMPT,
+        similarity_top_k=top_k,
+        llm=llm,
+        use_async=False,
+        streaming=False,
+    )
+
+    try:
+        response = _call_query_engine(query_engine, question)
+        contexts = [
+            node.node.get_content().strip()
+            for node in response.source_nodes
+            if node.node.get_content().strip()
+        ]
+        return {
+            "answer":   str(response).strip(),
+            "contexts": contexts,
+        }
+    except Exception as exc:
+        logger.error("run_query_for_eval_with_context error: %s", exc)
+        return {"answer": "", "contexts": []}
 
 
 # ─────────────────────────────────────────────
@@ -435,7 +592,7 @@ def run_prompt_only_for_eval(
     prompt = PROMPT_ONLY_TEMPLATE.format(question=question.strip())
 
     try:
-        response = llm.complete(prompt)
+        response = _call_llm_complete(llm, prompt)
         return str(response).strip()
     except Exception as exc:
         logger.error("run_prompt_only_for_eval error: %s", exc)

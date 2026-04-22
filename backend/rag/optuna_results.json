@@ -1,0 +1,271 @@
+{
+  "best_params": {
+    "chunk_size": 800,
+    "top_k": 3,
+    "temperature": 0.7376047641535408,
+    "top_p": 0.9158601137016593
+  },
+  "best_value": 0.8728142172503065,
+  "trials": [
+    {
+      "number": 0,
+      "params": {
+        "chunk_size": 300,
+        "top_k": 1,
+        "temperature": 0.8661761457749352,
+        "top_p": 0.8803345035229626
+      },
+      "value": 0.3405507587635249,
+      "faithfulness": 0.4,
+      "answer_relevancy": 0.28110151752704976,
+      "n_questions": 10
+    },
+    {
+      "number": 1,
+      "params": {
+        "chunk_size": 500,
+        "top_k": 1,
+        "temperature": 0.3042422429595377,
+        "top_p": 0.8574269294896714
+      },
+      "value": 0.31564672215175116,
+      "faithfulness": 0.35,
+      "answer_relevancy": 0.28129344430350234,
+      "n_questions": 10
+    },
+    {
+      "number": 2,
+      "params": {
+        "chunk_size": 500,
+        "top_k": 3,
+        "temperature": 0.7851759613930136,
+        "top_p": 0.7599021346475079
+      },
+      "value": 0.733450511954709,
+      "faithfulness": 0.8,
+      "answer_relevancy": 0.666901023909418,
+      "n_questions": 10
+    },
+    {
+      "number": 3,
+      "params": {
+        "chunk_size": 800,
+        "top_k": 5,
+        "temperature": 0.9656320330745594,
+        "top_p": 0.9425192044349383
+      },
+      "value": 0.742431024701069,
+      "faithfulness": 0.8,
+      "answer_relevancy": 0.684862049402138,
+      "n_questions": 10
+    },
+    {
+      "number": 4,
+      "params": {
+        "chunk_size": 500,
+        "top_k": 1,
+        "temperature": 0.9093204020787821,
+        "top_p": 0.777633994480005
+      },
+      "value": 0.3059976880611786,
+      "faithfulness": 0.3,
+      "answer_relevancy": 0.3119953761223572,
+      "n_questions": 10
+    },
+    {
+      "number": 5,
+      "params": {
+        "chunk_size": 1200,
+        "top_k": 4,
+        "temperature": 0.9394989415641891,
+        "top_p": 0.9684482051282947
+      },
+      "value": 0.7424082966921892,
+      "faithfulness": 0.8,
+      "answer_relevancy": 0.6848165933843783,
+      "n_questions": 10
+    },
+    {
+      "number": 6,
+      "params": {
+        "chunk_size": 300,
+        "top_k": 2,
+        "temperature": 0.2713490317738959,
+        "top_p": 0.9486212527455788
+      },
+      "value": 0.5570724306358236,
+      "faithfulness": 0.6,
+      "answer_relevancy": 0.5141448612716472,
+      "n_questions": 10
+    },
+    {
+      "number": 7,
+      "params": {
+        "chunk_size": 1000,
+        "top_k": 5,
+        "temperature": 0.7722447692966574,
+        "top_p": 0.7596147044602517
+      },
+      "value": 0.7422899897953427,
+      "faithfulness": 0.8,
+      "answer_relevancy": 0.6845799795906853,
+      "n_questions": 10
+    },
+    {
+      "number": 8,
+      "params": {
+        "chunk_size": 300,
+        "top_k": 2,
+        "temperature": 0.11586905952512971,
+        "top_p": 0.958931027762678
+      },
+      "value": 0.48016369968605804,
+      "faithfulness": 0.5,
+      "answer_relevancy": 0.4603273993721161,
+      "n_questions": 10
+    },
+    {
+      "number": 9,
+      "params": {
+        "chunk_size": 1200,
+        "top_k": 4,
+        "temperature": 0.8872127425763265,
+        "top_p": 0.8416644775485848
+      },
+      "value": 0.7799495563812827,
+      "faithfulness": 0.8,
+      "answer_relevancy": 0.7598991127625654,
+      "n_questions": 10
+    },
+    {
+      "number": 10,
+      "params": {
+        "chunk_size": 200,
+        "top_k": 4,
+        "temperature": 0.581310509303485,
+        "top_p": 0.7053885626844459
+      },
+      "value": 0.7690794554550071,
+      "faithfulness": 0.8,
+      "answer_relevancy": 0.7381589109100141,
+      "n_questions": 10
+    },
+    {
+      "number": 11,
+      "params": {
+        "chunk_size": 200,
+        "top_k": 4,
+        "temperature": 0.5964372651982796,
+        "top_p": 0.707561031168066
+      },
+      "value": 0.7410192301023351,
+      "faithfulness": 0.8,
+      "answer_relevancy": 0.6820384602046701,
+      "n_questions": 10
+    },
+    {
+      "number": 12,
+      "params": {
+        "chunk_size": 1200,
+        "top_k": 4,
+        "temperature": 0.5381083720506679,
+        "top_p": 0.8103704419613946
+      },
+      "value": 0.7835635460029906,
+      "faithfulness": 0.9,
+      "answer_relevancy": 0.6671270920059812,
+      "n_questions": 10
+    },
+    {
+      "number": 13,
+      "params": {
+        "chunk_size": 1200,
+        "top_k": 3,
+        "temperature": 0.40302372932243274,
+        "top_p": 0.8124970619419953
+      },
+      "value": 0.7423217289798565,
+      "faithfulness": 0.8,
+      "answer_relevancy": 0.6846434579597128,
+      "n_questions": 10
+    },
+    {
+      "number": 14,
+      "params": {
+        "chunk_size": 1200,
+        "top_k": 4,
+        "temperature": 0.6704115646140738,
+        "top_p": 0.8976682578181943
+      },
+      "value": 0.8722295086945557,
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.7444590173891114,
+      "n_questions": 10
+    },
+    {
+      "number": 15,
+      "params": {
+        "chunk_size": 1200,
+        "top_k": 5,
+        "temperature": 0.6238153451696133,
+        "top_p": 0.9030454174286845
+      },
+      "value": 0.7397586227831576,
+      "faithfulness": 0.8,
+      "answer_relevancy": 0.6795172455663152,
+      "n_questions": 10
+    },
+    {
+      "number": 16,
+      "params": {
+        "chunk_size": 1200,
+        "top_k": 3,
+        "temperature": 0.4812884929660226,
+        "top_p": 0.9988049595242305
+      },
+      "value": 0.8211489156369152,
+      "faithfulness": 0.8888888888888888,
+      "answer_relevancy": 0.7534089423849415,
+      "n_questions": 9
+    },
+    {
+      "number": 17,
+      "params": {
+        "chunk_size": 1000,
+        "top_k": 2,
+        "temperature": 0.4277749036302274,
+        "top_p": 0.9943253748985548
+      },
+      "value": 0.5336218478603159,
+      "faithfulness": 0.5555555555555556,
+      "answer_relevancy": 0.5116881401650762,
+      "n_questions": 10
+    },
+    {
+      "number": 18,
+      "params": {
+        "chunk_size": 800,
+        "top_k": 3,
+        "temperature": 0.6882295119501993,
+        "top_p": 0.9059626505814982
+      },
+      "value": 0.8273466818752977,
+      "faithfulness": 0.8333333333333334,
+      "answer_relevancy": 0.8213600304172619,
+      "n_questions": 8
+    },
+    {
+      "number": 19,
+      "params": {
+        "chunk_size": 800,
+        "top_k": 3,
+        "temperature": 0.7376047641535408,
+        "top_p": 0.9158601137016593
+      },
+      "value": 0.8728142172503065,
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.745628434500613,
+      "n_questions": 9
+    }
+  ]
+}

@@ -37,6 +37,13 @@ logger = logging.getLogger(__name__)
 GCS_BUCKET_NAME   = os.environ.get("GCS_BUCKET_NAME", "your-bucket-name")
 CHROMA_PATH       = os.environ.get("CHROMA_PATH", "chroma")
 CHROMA_COLLECTION = "studentcompass"
+
+# ─────────────────────────────────────────────
+# Best Optuna parameters
+# Source: 10 trials, 20 questions
+#   faithfulness=1.000  answer_relevancy=0.746  mean=0.873
+# ─────────────────────────────────────────────
+BEST_CHUNK_SIZE = 800
 SUPPORTED_EXTS    = {".pdf", ".txt", ".docx", ".doc", ".md"}
 
 CONCEPTUAL_TYPES = {
@@ -187,7 +194,7 @@ def ingest_blob(
 
         vector_store    = ChromaVectorStore(chroma_collection=chroma_collection)
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
-        parser          = SentenceSplitter(chunk_size=1024, chunk_overlap=100)
+        parser          = SentenceSplitter(chunk_size=BEST_CHUNK_SIZE, chunk_overlap=100)
 
         VectorStoreIndex.from_documents(
             documents,
@@ -460,7 +467,7 @@ def run_ingestion():
 
             vector_store    = ChromaVectorStore(chroma_collection=chroma_collection)
             storage_context = StorageContext.from_defaults(vector_store=vector_store)
-            parser          = SentenceSplitter(chunk_size=1024, chunk_overlap=100)
+            parser          = SentenceSplitter(chunk_size=BEST_CHUNK_SIZE, chunk_overlap=100)
 
             VectorStoreIndex.from_documents(
                 documents,
