@@ -666,7 +666,9 @@ All document management API calls: `uploadFile` (XHR with upload progress callba
 #### `src/services/api.js`
 Simple non-streaming `askQuestion` function that posts to `/query` and returns a complete `{ answer, sources }` JSON response. Available as a fallback for any component that does not need token-by-token streaming.
 
-## Future Improvements
+---
+
+### Future Improvements
 
 - **Improve source selection logic**  
   Prevent the system from listing random or irrelevant sources when the model responds with *“I don’t have enough information to answer that question.”*
