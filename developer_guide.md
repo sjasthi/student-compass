@@ -604,41 +604,6 @@ The frontend handles `retrying` SSE events from the backend retry logic — when
 Uses `QuestionBar`, `AnswerCard`, `SourcesCard`, and `DisclaimerCard`.
 
 
-## Future Improvements
-
-- **Improve source selection logic**  
-  Prevent the system from listing random or irrelevant sources when the model responds with *“I don’t have enough information to answer that question.”*
-
-- **Add PowerPoint (.pptx) ingestion**  
-  Extend the Admin upload pipeline to support `.pptx` files, including parsing, chunking, and embedding slide text.
-
-- **Smarter and faster evaluation pipeline**  
-  Enhance the Evaluation page’s evaluation logic with early‑elimination heuristics to skip low‑performing parameter combinations and reduce total runtime.
-
-- **Admin authentication system**  
-  Add an Admin login role with access to all three pages: **Chat**, **Admin**, and **Test**.
-
-- **Student authentication system**  
-  Add a Student login role with access to the **Chat** page only.
-
-- **Guest mode (default)**  
-  Unauthenticated users can access the Chat page and ask questions, but their chat history will not be saved.
-
-- **Persistent chat history for students**  
-  Logged‑in students will have their chat history stored and retrievable across sessions.
-
-- **Dark mode UI theme**  
-  Add a global dark/light mode toggle to improve accessibility and user comfort.
-
-- **Multi-language support**  
-  Allow the interface and chat responses to support multiple languages for broader accessibility.
-
-- **Bulk file upload (multiple files at once)**  
-  Allow admins to upload several documents in a single action, while still requiring all files in the batch to share the same document category.
-
-  - **Advanced extension:** explore removing the category dropdown entirely by adding automatic document-type classification. The system could predict the correct category (e.g., Admissions, Financial Aid, Registration) based on the document’s text content during ingestion.
-
-
 #### `Admin.jsx` — Document Management (`/admin`)
 
 Admin-only page for managing the knowledge base. Supports file uploads (PDF, DOCX, TXT, MD) with real-time progress tracking via `XMLHttpRequest`, URL uploads that scrape and ingest web pages, a document-type selector (Admissions, Financial Aid, Graduation, etc.), a replace-existing toggle, and a manual GCS-to-ChromaDB sync trigger. Displays the full list of active documents via `FileList` and shows upload/error feedback via `Notification`.
@@ -700,3 +665,37 @@ All document management API calls: `uploadFile` (XHR with upload progress callba
 
 #### `src/services/api.js`
 Simple non-streaming `askQuestion` function that posts to `/query` and returns a complete `{ answer, sources }` JSON response. Available as a fallback for any component that does not need token-by-token streaming.
+
+## Future Improvements
+
+- **Improve source selection logic**  
+  Prevent the system from listing random or irrelevant sources when the model responds with *“I don’t have enough information to answer that question.”*
+
+- **Add PowerPoint (.pptx) ingestion**  
+  Extend the Admin upload pipeline to support `.pptx` files, including parsing, chunking, and embedding slide text.
+
+- **Smarter and faster evaluation pipeline**  
+  Enhance the Evaluation page’s evaluation logic with early‑elimination heuristics to skip low‑performing parameter combinations and reduce total runtime.
+
+- **Admin authentication system**  
+  Add an Admin login role with access to all three pages: **Chat**, **Admin**, and **Test**.
+
+- **Student authentication system**  
+  Add a Student login role with access to the **Chat** page only.
+
+- **Guest mode (default)**  
+  Unauthenticated users can access the Chat page and ask questions, but their chat history will not be saved.
+
+- **Persistent chat history for students**  
+  Logged‑in students will have their chat history stored and retrievable across sessions.
+
+- **Dark mode UI theme**  
+  Add a global dark/light mode toggle to improve accessibility and user comfort.
+
+- **Multi-language support**  
+  Allow the interface and chat responses to support multiple languages for broader accessibility.
+
+- **Bulk file upload (multiple files at once)**  
+  Allow admins to upload several documents in a single action, while still requiring all files in the batch to share the same document category.
+
+  - **Advanced extension:** explore removing the category dropdown entirely by adding automatic document-type classification. The system could predict the correct category (e.g., Admissions, Financial Aid, Registration) based on the document’s text content during ingestion.
