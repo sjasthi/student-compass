@@ -76,21 +76,38 @@ Vite automatically proxies API calls to the backend during development.
 ---
 
 ## 📁 Repository Structure
+
+```text
 backend/
-rag/
-.env
-eval_optuna.py
-gcs_upload.py
-ingest.py
-query.py
-gold_questions.json
-optuna_results.json
-service_account.json
-requirements.txt
+  rag/
+    .env                      #not commited
+    service_account.json      #not commited
+    eval_optuna.py
+    gcs_upload.py
+    gold_questions.json
+    ingest.py
+    optuna_results.json
+    query.py
+    requirements.txt
 frontend/
+  src/
+    api/
+    components/
+    pages/
+    services/
+    styles/
+    App.jsx
+    main.jsx
+  index.html
+  package.json
+  postcss.config.js
+  tailwind.config.js
+  vite.config.js
+  
+
 developer_guide.md
 end_user_guide.md
-
+```
 
 ---
 
