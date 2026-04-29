@@ -27,7 +27,7 @@ These guides contain all detailed explanations, diagrams, and instructions.
 cd backend/rag
 pip install -r requirements.txt
 python gcs_upload.py
-
+```
 Backend runs at:  
 `http://localhost:5000`
 
@@ -38,7 +38,7 @@ Backend runs at:
 cd frontend
 npm install
 npm run dev
-
+```
 Frontend runs at:  
 `http://localhost:5173`  
 Vite automatically proxies API calls to the backend during development.
