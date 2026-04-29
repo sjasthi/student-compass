@@ -103,7 +103,6 @@ frontend/
   postcss.config.js
   tailwind.config.js
   vite.config.js
-  
 
 developer_guide.md
 end_user_guide.md
