@@ -1,33 +1,48 @@
 # Backend dependencies for StudentCompass RAG application
 # Install with: pip install -r requirements.txt
 
-# ── Core RAG stack ─────────────────────────────────────────
-llama-index
+# ── Modular LlamaIndex (required by your imports) ─────────────────────────────
+llama-index-core
 llama-index-vector-stores-chroma
-llama-index-llms-google-genai
 llama-index-embeddings-huggingface
+llama-index-llms-google-genai
 llama-index-readers-web
+
+# ── Vector store ─────────────────────────────────────────────────────────────
 chromadb
+
+# ── Embeddings + Transformers stack ──────────────────────────────────────────
 sentence-transformers
+transformers
+torch
 
-# ── LLM / Google ───────────────────────────────────────────
+# ── Google Gemini SDK ────────────────────────────────────────────────────────
 google-generativeai
-langchain-google-genai          # used by ingest.py and query.py (Flask app only, not eval_optuna)
-langchain-core                  # LangChain base classes used by custom LLM wrapper in eval_optuna
-langchain-community             # HuggingFaceEmbeddings used by answer_relevancy scorer
 
-# ── Web framework ──────────────────────────────────────────
+# ── LangChain (used by RAGAS + eval pipeline) ────────────────────────────────
+langchain-core
+langchain-community
+langchain-google-genai
+
+# ── Flask backend server ─────────────────────────────────────────────────────
 flask
 flask-cors
-python-dotenv
+werkzeug
 
-# ── Cloud storage ──────────────────────────────────────────
+# ── Cloud storage ────────────────────────────────────────────────────────────
 google-cloud-storage
 
-# ── Retry logic (Option 1 — 503 handling) ──────────────────
+# ── HTTP + Web scraping ──────────────────────────────────────────────────────
+requests
+trafilatura
+
+# ── Environment variables ────────────────────────────────────────────────────
+python-dotenv
+
+# ── Retry logic ──────────────────────────────────────────────────────────────
 tenacity
 
-# ── Parameter search + evaluation (Optuna + RAGAS) ─────────
+# ── Evaluation stack (Optuna + RAGAS) ─────────────────────────────────────────
 optuna
-ragas==0.1.21                   # pinned — 0.2+ collections API does not support Gemini custom LLMs
-datasets                        # HuggingFace Datasets, required by ragas
+ragas==0.1.21
+datasets
